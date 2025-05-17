@@ -1,0 +1,74 @@
+# Fix Plan for Media Downloader App
+
+## Issues to Address
+
+### 1. Video/Audio Quality Options ✓
+- [x] Remove excessive video quality options
+- [x] Keep only .mp4 formats from 144p to highest available quality (1080p, 2K, 4K)
+- [x] Add audio-only (.mp3) options for:
+  - [x] 128kbps
+  - [x] 192kbps
+  - [x] 320kbps (or best audio if not available)
+- [x] Implement fallback to nearest quality if exact bitrate not available
+- [x] Standardize video resolution labels to clean up display
+- [x] Improve format display with badges and clear information
+
+### 2. Video Playback Error ✓
+- [x] Investigate AV1 format issue shown in screenshot
+- [x] Ensure downloaded videos are in a compatible format
+- [x] Add codec selection/conversion if needed
+- [x] Fix video downloading error with format selection
+- [x] Test downloaded video playback with audio
+
+### 3. Clipboard Auto-detection ✓
+- [x] Fix automatic clipboard detection for YouTube/Facebook/TikTok URLs only
+- [x] Implement auto-paste functionality when valid URL is detected
+- [x] Add notification for wrong URL formats
+- [x] Test with various URL formats
+
+### 4. History Page Improvements ✓
+- [x] Update history item display to include:
+  - [x] Thumbnail
+  - [x] Title
+  - [x] Duration
+  - [x] File path
+- [x] Add Open and Delete buttons
+- [x] Implement file existence check
+- [x] Disable/gray out buttons for non-existent files
+
+### 5. Download Progress Issues ✓
+- [x] Fix static progress bar
+- [x] Ensure real-time progress updates
+- [x] Display accurate download speed
+- [x] Show ETA and downloaded size properly
+
+### 6. UI/UX Enhancements ✓
+- [x] Improve overall UI design
+- [x] Add responsive elements
+- [x] Enhance visual feedback during operations
+- [x] Implement better error messaging with notifications
+- [x] Add format type switcher (Video/Audio)
+
+### 7. Issues Fixed in Latest Update ✓
+- [x] Fix URL auto-detection to only accept YouTube, Facebook, and TikTok
+- [x] Add notification system for errors and user feedback
+- [x] Simplify video formats to show one option per resolution
+- [x] Ensure videos always download with audio (using FFmpeg)
+- [x] Add video/audio format selector switch for easier selection
+- [x] Restrict output formats to MP4 for video and MP3 for audio only
+
+## Implementation Notes
+- All issues have been fixed and tested
+- Video downloads now use FFmpeg to ensure audio is properly merged with video
+- Format selection has been simplified to one option per resolution (144p, 360p, 480p, 720p, 1080p, 2K, 4K)
+- Added video/audio format selector switch for easier selection between MP4 videos and MP3 audio
+- Clipboard detection now only works with YouTube, Facebook, and TikTok URLs with notifications
+- Added visual notifications system for errors, warnings, and user feedback
+- Improved video format selection logic to avoid problematic codecs like AV1
+
+## Future Improvements
+- Add more configuration options for default download settings
+- Implement batch download queue for multiple URLs
+- Add subtitle download options
+- Implement live stream recording functionality
+- Consider adding a portable/standalone version without external dependencies

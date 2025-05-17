@@ -1,0 +1,91 @@
+# AppPlan.txt
+
+## 1. Chức năng chính
+- Download video/audio từ YouTube, Facebook, TikTok (và các nền tảng khác nếu muốn).
+- Chọn chất lượng video/audio (video: nhiều độ phân giải, audio: 128/192/320kbps).
+- Tải playlist hoặc nhiều link cùng lúc.
+- Chọn thư mục lưu file.
+- Xem lịch sử tải (danh sách các file đã tải, mở file, mở thư mục, copy link, xóa lịch sử).
+- Hiển thị tiến trình tải, tốc độ, ETA, dung lượng đã tải.
+- Lưu cấu hình (settings) và thư mục tải về.
+
+## 2. Cấu trúc UI (tham khảo)
+- Thanh điều hướng (NavigationView/Menu):
+  - Trang chủ (Home)
+  - Tải playlist (Playlist)
+  - Lịch sử (History)
+  - Cài đặt (Settings)
+- Trang chủ:
+  - Nhập URL video
+  - Nút lấy thông tin
+  - Hiển thị thông tin video (tiêu đề, kênh, thời lượng, ngày đăng, lượt xem, lượt thích, mô tả, thumbnail)
+  - Chọn chất lượng video/audio (dạng nút hoặc danh sách)
+  - Nút tải video/audio
+  - Hiển thị tiến trình tải, tốc độ, ETA, dung lượng đã tải
+  - Nút chọn thư mục lưu, mở thư mục tải về, hủy tải, tải lại
+- Playlist:
+  - Nhập nhiều link hoặc link playlist
+  - Lấy thông tin playlist
+  - Danh sách video trong playlist, nút tải từng video hoặc tải tất cả
+- Lịch sử:
+  - Danh sách file đã tải (tiêu đề, ngày tải, chất lượng, link, đường dẫn)
+  - Nút mở file, mở thư mục, copy link, xóa lịch sử
+- Cài đặt:
+  - Tùy chọn tự động lấy thông tin khi copy link
+  - Tùy chọn tự động dán link khi copy
+
+## 3. Các thành phần logic chính
+### A. ViewModel/State Management
+- MainViewModel (hoặc tương đương):  
+  - Chứa toàn bộ state của app: url, thông tin video, danh sách chất lượng, tiến trình, lịch sử, v.v.
+  - Các command: Lấy info, tải, chọn thư mục, tải playlist, v.v.
+  - Observable/Reactive cho UI cập nhật tự động.
+### B. Model
+- HistoryItem:  
+  - Title, Url, Quality, OutputPath, DownloadedAt, IsAudio
+- PlaylistItem:  
+  - Title, Url, ThumbnailUrl, Status, Quality, OutputPath
+### C. Service
+- YtDlpService:  
+  - Gọi yt-dlp (hoặc API tương đương) để lấy info, tải file.
+  - Xử lý output, parse JSON, lấy danh sách format, v.v.
+- SettingsService:  
+  - Đọc/ghi file cấu hình (settings, thư mục lưu, lịch sử).
+
+## 4. Các file cấu hình/cơ sở dữ liệu
+- settings.json: Lưu các tùy chọn (auto fetch, auto paste, v.v.)
+- history.json: Lưu lịch sử tải
+- savefolder.txt: Lưu đường dẫn thư mục tải về
+
+## 5. Các resource cần thiết
+- yt-dlp (hoặc API tương đương)
+- ffmpeg (nếu cần convert audio)
+- Icon, ảnh splash, logo, v.v.
+
+## 6. Yêu cầu kỹ thuật
+- UI framework: Có thể dùng bất kỳ framework nào hỗ trợ MVVM hoặc reactive (ví dụ: WPF, Avalonia, MAUI, Electron, React, Flutter, Qt, ...).
+- Giao tiếp với yt-dlp:  
+  - Gọi process ngoài (Process.Start) hoặc gọi API nếu có.
+  - Đọc output chuẩn, parse JSON.
+- Lưu file cấu hình/lịch sử:  
+  - Đọc/ghi file JSON đơn giản.
+- Tự động cập nhật UI khi state thay đổi.
+
+## 7. Các điểm cần chú ý khi chuyển nền tảng
+- Không dùng các thuộc tính/kiểu riêng của WinUI (SolidColorBrush, Visibility, ...), thay bằng kiểu tương đương của framework mới.
+- Không dùng ResourceDictionary/XAML resource WinUI – chuyển sang resource/style của framework mới.
+- Chuyển toàn bộ binding, command, event sang cơ chế của framework mới.
+- Kiểm tra lại việc gọi process ngoài (yt-dlp, ffmpeg) trên nền tảng mới.
+
+## 8. Gợi ý các framework thay thế
+- WPF (.NET)
+- Avalonia (.NET, cross-platform)
+- MAUI (.NET, cross-platform)
+- Electron (JS/TS, cross-platform)
+- React/Next.js (Web)
+- Flutter (Dart, cross-platform)
+- Qt (C++/Python, cross-platform)
+
+**Tóm lại:**  
+Bạn chỉ cần chuyển toàn bộ logic, model, service, resource, và UI layout sang framework mới, đảm bảo các chức năng và state như trên.  
+Nếu cần bản mẫu code cho framework mới, hãy chỉ định nền tảng bạn muốn!
