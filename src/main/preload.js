@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose IPC API to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {  // System checks
   checkYtdlp: () => ipcRenderer.invoke('check-ytdlp'),
+  downloadYtDlp: () => ipcRenderer.invoke('download-ytdlp'),
   
   // Video info and download
   getVideoInfo: (url) => ipcRenderer.invoke('get-video-info', url),
@@ -35,5 +36,8 @@ contextBridge.exposeInMainWorld('electronAPI', {  // System checks
   deleteHistoryItem: (index) => ipcRenderer.invoke('delete-history-item', index),
   
   // File operations
-  checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath)
+  checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath),
+  
+  // App lifecycle
+  quitApp: () => ipcRenderer.invoke('quit-app')
 });

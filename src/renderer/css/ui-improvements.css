@@ -173,3 +173,33 @@ button:disabled {
   from { transform: translateY(-20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* Status for downloading yt-dlp */
+.download-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.download-progress {
+  background-color: #343a40;
+  padding: 20px;
+  border-radius: 5px;
+  color: white;
+  text-align: center;
+  width: 80%;
+  max-width: 500px;
+}
+
+.download-progress span {
+  display: block;
+  margin-bottom: 15px;
+  font-size: 18px;
+}

@@ -30,8 +30,50 @@ export class DownloadManager {
       this.useYtdlp = result.installed;
       
       if (!this.useYtdlp) {
-        console.warn('yt-dlp not found. Using dummy service for demonstration purposes.');
-        alert('yt-dlp was not found on your system. The app will run in demo mode with limited functionality.');
+        console.warn('yt-dlp not found. Offering to download it automatically.');
+        
+        // Show a more user-friendly dialog with option to download
+        if (confirm('yt-dlp không được tìm thấy trên hệ thống của bạn. Bạn có muốn tự động tải xuống ngay bây giờ không?\n\nĐường dẫn đã kiểm tra: ' + (result.path || 'không có'))) {
+          try {
+            // Show download progress
+            const downloadStatus = document.createElement('div');
+            downloadStatus.className = 'download-status';
+            downloadStatus.innerHTML = `
+              <div class="download-progress">
+                <span>Đang tải xuống yt-dlp...</span>
+                <div class="progress">
+                  <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="width: 100%"></div>
+                </div>
+              </div>
+            `;
+            document.body.appendChild(downloadStatus);
+            
+            // Download yt-dlp
+            console.log('Attempting to download yt-dlp automatically...');
+            const downloadResult = await window.electronAPI.downloadYtDlp();
+            
+            // Remove download status
+            document.body.removeChild(downloadStatus);
+            
+            if (downloadResult.success) {
+              console.log('yt-dlp downloaded successfully:', downloadResult.path);
+              alert(`yt-dlp đã được tải xuống thành công.\nPhiên bản: ${downloadResult.version}\nĐường dẫn: ${downloadResult.path}`);
+              this.useYtdlp = true;
+            } else {
+              console.error('Failed to download yt-dlp:', downloadResult.error);
+              alert(`Không thể tải xuống yt-dlp: ${downloadResult.error}\nỨng dụng sẽ chạy ở chế độ demo với chức năng hạn chế.`);
+              this.useYtdlp = false;
+            }
+          } catch (downloadError) {
+            console.error('Error downloading yt-dlp:', downloadError);
+            alert(`Lỗi khi tải xuống yt-dlp: ${downloadError.message}\nỨng dụng sẽ chạy ở chế độ demo với chức năng hạn chế.`);
+            this.useYtdlp = false;
+          }
+        } else {
+          // User declined to download
+          alert('Ứng dụng sẽ chạy ở chế độ demo với chức năng hạn chế.');
+          this.useYtdlp = false;
+        }
       }
     } catch (error) {
       console.error('Error checking for yt-dlp:', error);

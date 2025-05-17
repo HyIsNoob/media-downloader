@@ -1,6 +1,6 @@
 {
   "name": "media-downloader",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Download videos and audio from various platforms like YouTube, Facebook, TikTok",
   "main": "src/main/main.js",
   "scripts": {
@@ -25,12 +25,13 @@
   "dependencies": {
     "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.6",
-    "electron-store": "^8.1.0"
+    "electron-log": "^5.4.0",
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "electron": "^36.2.1",
-    "electron-builder": "^24.13.3",
-    "electron-updater": "^6.6.2"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.mediadownloader.app",
@@ -47,7 +48,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "HyIsNoob", 
+        "owner": "HyIsNoob",
         "repo": "media-downloader",
         "private": false
       }
@@ -55,7 +56,7 @@
     "extraResources": [
       {
         "from": "resources",
-        "to": "bin",
+        "to": "",
         "filter": [
           "**/*"
         ]
@@ -69,7 +70,12 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "installer.nsh",
+      "runAfterFinish": true,
+      "uninstallDisplayName": "${productName}",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "mac": {
       "target": [

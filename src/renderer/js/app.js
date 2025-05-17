@@ -373,7 +373,17 @@ function tryReadClipboard() {
     this.disabled = true;
     this.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Checking...';
     
-    window.electronAPI.checkForUpdates();
+    window.electronAPI.checkForUpdates()
+      .then(result => {
+        if (result && result.error) {
+          showNotification(`Lỗi kiểm tra cập nhật: ${result.error}`, 'error');
+          console.error('Update check error:', result.error);
+        }
+      })
+      .catch(err => {
+        showNotification(`Lỗi kiểm tra cập nhật: ${err.message}`, 'error');
+        console.error('Update check error:', err);
+      });
     
     // Re-enable after 3 seconds
     setTimeout(() => {
@@ -687,6 +697,15 @@ function tryReadClipboard() {
     window.electronAPI.onUpdateStatus((status, info) => {
       console.log('Update status:', status, info);
       
+      // Cập nhật debug info
+      const debugOutput = document.getElementById('update-debug-output');
+      if (debugOutput) {
+        const timestamp = new Date().toLocaleTimeString();
+        const currentText = debugOutput.textContent;
+        const newText = `[${timestamp}] Status: ${status}\n${info ? JSON.stringify(info, null, 2) : ''}\n\n${currentText}`;
+        debugOutput.textContent = newText.slice(0, 2000); // Giới hạn độ dài
+      }
+      
       switch (status) {
         case 'checking':
           console.log('Checking for updates...');
@@ -961,4 +980,22 @@ function tryReadClipboard() {
       });
     });
   }
+
+  // Add event handlers for navigation
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', function(event) {
+      const page = this.getAttribute('data-page');
+      if (!page) return; // Skip if no page specified (e.g., for quit button)
+      
+      // ...existing code...
+    });
+  });
+
+  // Add quit button handler
+  document.getElementById('quit-app').addEventListener('click', function() {
+    // Show confirmation dialog
+    if (confirm('Are you sure you want to quit the application?')) {
+      window.electronAPI.quitApp();
+    }
+  });
 });

@@ -6,6 +6,28 @@ const { spawn } = require('child_process');
 const Store = require('electron-store').default || require('electron-store');
 // Import autoUpdater
 const { autoUpdater } = require('electron-updater');
+// Import the downloader utility
+const { downloadYtDlp } = require('./downloader');
+
+// Nâng cấp logging cho autoUpdater
+autoUpdater.logger = require('electron-log');
+autoUpdater.logger.transports.file.level = 'debug'; // Nâng cấp từ 'info' lên 'debug'
+autoUpdater.logger.info('App starting...');
+
+// Ghi ra vị trí file log để dễ tìm
+console.log('Log file location:', autoUpdater.logger.transports.file.getFile().path);
+
+// Check for cleanup argument (used during uninstallation)
+if (process.argv.includes('--cleanup')) {
+  // Clean up all application data
+  cleanupAppData().then(() => {
+    console.log('Application data cleanup completed.');
+    app.quit();
+  }).catch(error => {
+    console.error('Error during cleanup:', error);
+    app.quit();
+  });
+}
 
 // Initialize stores
 const store = new Store();
@@ -17,6 +39,9 @@ process.on('uncaughtException', (error) => {
 });
 
 let mainWindow;
+let updateCheckInterval;
+// Track active download processes
+let activeProcesses = [];
 
 // Create the main window
 function createWindow() {
@@ -41,42 +66,65 @@ function createWindow() {
 
 // Configure auto-updater
 function configureAutoUpdater() {
-  // Disable auto downloading of updates
+  // Disable auto downloading of updates initially (user can choose)
   autoUpdater.autoDownload = false;
+  
+  // Configure for GitHub releases
+  autoUpdater.allowPrerelease = false; // Không tải phiên bản thử nghiệm
+  autoUpdater.allowDowngrade = false;  // Không tải phiên bản cũ hơn
+  
+  // Log when checking for updates
+  autoUpdater.logger.info('Configuring autoUpdater...');
   
   // Send update-related events to renderer
   autoUpdater.on('checking-for-update', () => {
+    autoUpdater.logger.info('Checking for updates...');
     mainWindow.webContents.send('update-status', 'checking');
   });
   
   autoUpdater.on('update-available', (info) => {
+    autoUpdater.logger.info('Update available:', info);
     mainWindow.webContents.send('update-status', 'available', info);
+    
+    // Lưu thông tin về phiên bản có sẵn
+    store.set('latestUpdateVersion', info.version);
+    store.set('latestUpdateDate', new Date().toISOString());
   });
   
-  autoUpdater.on('update-not-available', () => {
+  autoUpdater.on('update-not-available', (info) => {
+    autoUpdater.logger.info('No updates available');
     mainWindow.webContents.send('update-status', 'not-available');
   });
   
   autoUpdater.on('error', (err) => {
+    autoUpdater.logger.error('AutoUpdater error:', err);
     mainWindow.webContents.send('update-status', 'error', err.toString());
   });
   
   autoUpdater.on('download-progress', (progressObj) => {
+    const logMessage = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
+    autoUpdater.logger.info(logMessage);
     mainWindow.webContents.send('update-status', 'progress', progressObj);
   });
   
-  autoUpdater.on('update-downloaded', () => {
-    mainWindow.webContents.send('update-status', 'downloaded');
-    // Show prompt to install update
+  autoUpdater.on('update-downloaded', (info) => {
+    autoUpdater.logger.info('Update downloaded:', info);
+    mainWindow.webContents.send('update-status', 'downloaded', info);
+    
+    // Show prompt to install update with version details
     dialog.showMessageBox({
       type: 'info',
       title: 'Cập nhật mới',
-      message: 'Đã tải xong bản cập nhật. Bạn có muốn cài đặt và khởi động lại ứng dụng ngay?',
+      message: `Đã tải xong bản cập nhật ${info.version}. Bạn có muốn cài đặt và khởi động lại ứng dụng ngay?`,
+      detail: info.releaseNotes ? `Thông tin cập nhật: ${info.releaseNotes}` : undefined,
       buttons: ['Cài đặt', 'Để sau']
     }).then(({ response }) => {
       if (response === 0) {
         // Quit and install update
-        autoUpdater.quitAndInstall();
+        autoUpdater.logger.info('User confirmed update installation');
+        autoUpdater.quitAndInstall(true, true);
+      } else {
+        autoUpdater.logger.info('User postponed update installation');
       }
     });
   });
@@ -92,8 +140,8 @@ app.whenReady().then(() => {
     autoUpdater.checkForUpdates();
   }, 3000);
   
-  // Check for updates every hour
-  setInterval(() => {
+  // Check for updates every hour, store the interval ID
+  updateCheckInterval = setInterval(() => {
     autoUpdater.checkForUpdates();
   }, 60 * 60 * 1000);
 
@@ -106,14 +154,45 @@ app.whenReady().then(() => {
     store.set('saveFolder', app.getPath('downloads'));
   }
   
-  // Set yt-dlp path if not exists
+  // Set yt-dlp path if not exists (enhanced with more robust detection)
   if (!store.has('ytdlpPath')) {
-    // Use bundled yt-dlp if it exists, otherwise assume it's in PATH
-    const bundledPath = path.join(process.resourcesPath, 'bin', `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`);
+    console.log('Setting yt-dlp path...');
+    // Try multiple locations for yt-dlp
+    const possiblePaths = [
+      // 1. Resources folder (from packaged app)
+      path.join(process.resourcesPath, 'bin', `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`),
+      // 2. Double bin folder (observed in some installations)
+      path.join(process.resourcesPath, 'bin', 'bin', `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`),
+      // 3. Local development resources folder
+      path.join(app.getAppPath(), 'resources', 'bin', `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`),
+      // 4. Another possible location
+      path.join(process.resourcesPath, `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`),
+      // 5. Check if it's available in PATH
+      `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`
+    ];
     
-    if (fs.existsSync(bundledPath)) {
-      store.set('ytdlpPath', bundledPath);
-    } else {
+    // Log all possible paths for debugging
+    console.log('Checking for yt-dlp at these locations:', possiblePaths);
+    
+    // Check each path
+    let ytdlpFound = false;
+    
+    for (const testPath of possiblePaths) {
+      // For absolute paths, check if file exists
+      if (path.isAbsolute(testPath)) {
+        console.log(`Checking absolute path: ${testPath}`);
+        if (fs.existsSync(testPath)) {
+          console.log(`yt-dlp found at: ${testPath}`);
+          store.set('ytdlpPath', testPath);
+          ytdlpFound = true;
+          break;
+        }
+      }
+    }
+    
+    if (!ytdlpFound) {
+      // Default to a path that will be checked later (during first use)
+      console.log('yt-dlp not found in any expected location, using default PATH reference');
       store.set('ytdlpPath', `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`);
     }
   }
@@ -124,27 +203,79 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// Handle cleanup before quitting
+app.on('before-quit', () => {
+  // Clear update check interval
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval);
+  }
+  
+  // Kill any active child processes
+  activeProcesses.forEach(process => {
+    try {
+      if (!process.killed) {
+        process.kill();
+      }
+    } catch (err) {
+      console.error('Error killing process:', err);
+    }
+  });
+  
+  // Clear the active processes array
+  activeProcesses = [];
+});
+
 // IPC handlers
 ipcMain.handle('check-ytdlp', async () => {
   const ytdlpPath = store.get('ytdlpPath', 'yt-dlp');
   
+  console.log(`Checking yt-dlp at path: ${ytdlpPath}`);
+  
   return new Promise((resolve) => {
-    const ytdlp = spawn(ytdlpPath, ['--version']);
+    let errorMsg = '';
     
-    ytdlp.on('error', () => {
-      resolve({ installed: false });
-    });
-    
-    ytdlp.stdout.on('data', (data) => {
-      const version = data.toString().trim();
-      resolve({ installed: true, version });
-    });
-    
-    ytdlp.on('close', (code) => {
-      if (code !== 0) {
-        resolve({ installed: false });
-      }
-    });
+    try {
+      const ytdlp = spawn(ytdlpPath, ['--version']);
+      
+      ytdlp.on('error', (error) => {
+        console.error(`Error spawning yt-dlp: ${error.message}`);
+        errorMsg = error.message;
+        
+        if (error.code === 'ENOENT') {
+          errorMsg = `yt-dlp không được tìm thấy tại đường dẫn: ${ytdlpPath}`;
+        }
+        
+        resolve({ 
+          installed: false, 
+          error: errorMsg,
+          path: ytdlpPath 
+        });
+      });
+      
+      ytdlp.stdout.on('data', (data) => {
+        const version = data.toString().trim();
+        console.log(`yt-dlp version found: ${version}`);
+        resolve({ installed: true, version, path: ytdlpPath });
+      });
+      
+      ytdlp.on('close', (code) => {
+        if (code !== 0) {
+          console.log(`yt-dlp exited with code ${code}`);
+          resolve({ 
+            installed: false, 
+            error: `yt-dlp exited with code ${code}`, 
+            path: ytdlpPath 
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Exception when checking yt-dlp:', error);
+      resolve({ 
+        installed: false, 
+        error: `Exception: ${error.message}`, 
+        path: ytdlpPath 
+      });
+    }
   });
 });
 
@@ -248,7 +379,24 @@ ipcMain.handle('check-file-exists', (event, filePath) => {
 
 // Update related handlers
 ipcMain.handle('check-for-updates', () => {
-  autoUpdater.checkForUpdates();
+  autoUpdater.logger.info('Manually checking for updates...');
+  
+  // Log thông tin quan trọng về cấu hình updater để debug
+  const updateConfig = {
+    provider: 'github',
+    owner: 'HyIsNoob',
+    repo: 'media-downloader',
+    currentVersion: app.getVersion(),
+    feedURL: autoUpdater.getFeedURL()
+  };
+  
+  autoUpdater.logger.info('Update configuration:', updateConfig);
+  
+  // Tiến hành kiểm tra cập nhật
+  return autoUpdater.checkForUpdates().catch(err => {
+    autoUpdater.logger.error('Error checking for updates:', err);
+    return { error: err.message };
+  });
 });
 
 ipcMain.handle('download-update', () => {
@@ -265,6 +413,78 @@ ipcMain.handle('download-playlist-item', async (event, { url, index, format, isA
     mainWindow.webContents.send('download-progress', progress);
   });
 });
+
+// App quit handler
+ipcMain.handle('quit-app', () => {
+  app.quit();
+  return true;
+});
+
+// Add this IPC handler before other handlers
+
+ipcMain.handle('download-ytdlp', async () => {
+  try {
+    console.log('Starting yt-dlp download...');
+    const ytdlpPath = await downloadYtDlp();
+    console.log(`yt-dlp downloaded to: ${ytdlpPath}`);
+    
+    // Update the path in store
+    store.set('ytdlpPath', ytdlpPath);
+    
+    // Test the new binary
+    const version = await testYtDlpBinary(ytdlpPath);
+    return { 
+      success: true, 
+      path: ytdlpPath,
+      version 
+    };
+  } catch (error) {
+    console.error('Error downloading yt-dlp:', error);
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
+});
+
+/**
+ * Test if a yt-dlp binary works and return its version
+ * 
+ * @param {string} ytdlpPath - Path to yt-dlp binary
+ * @returns {Promise<string>} - Version string if successful
+ */
+function testYtDlpBinary(ytdlpPath) {
+  return new Promise((resolve, reject) => {
+    try {
+      const ytdlp = spawn(ytdlpPath, ['--version']);
+      
+      let stdout = '';
+      let stderr = '';
+      
+      ytdlp.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      ytdlp.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      ytdlp.on('error', (error) => {
+        reject(error);
+      });
+      
+      ytdlp.on('close', (code) => {
+        if (code === 0 && stdout.trim()) {
+          resolve(stdout.trim());
+        } else {
+          reject(new Error(`Test failed with code ${code}: ${stderr}`));
+        }
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
 
 // Helper function to get video information using yt-dlp
 async function getVideoInfo(url) {
@@ -284,6 +504,9 @@ async function getVideoInfo(url) {
       '--force-ipv4',
       url
     ]);
+    
+    // Track the process so we can kill it if needed
+    activeProcesses.push(ytdlp);
 
     let stdout = '';
     let stderr = '';
@@ -618,6 +841,9 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
     
     console.log('Running yt-dlp with args:', args.join(' '));
     const ytdlp = spawn(ytdlpPath, args);
+    
+    // Track the process so we can kill it if needed
+    activeProcesses.push(ytdlp);
 
     let stderr = '';
     let totalSize = 0;
@@ -734,6 +960,12 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
     ytdlp.on('close', (code) => {
       console.log(`yt-dlp process exited with code ${code}`);
       
+      // Remove process from tracking array
+      const index = activeProcesses.indexOf(ytdlp);
+      if (index !== -1) {
+        activeProcesses.splice(index, 1);
+      }
+      
       // Kiểm tra nếu quá trình đã hoàn tất (nhận diện từ output) hoặc code=0
       if (isCompleted || code === 0) {
         console.log('Download completed successfully. Resolving promise...');
@@ -773,5 +1005,62 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
       console.error('Process error:', error);
       reject(`Failed to start download process: ${error.message}`);
     });
+  });
+}
+
+/**
+ * Clean up all application data
+ * This is called during uninstallation to remove all data files
+ */
+async function cleanupAppData() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Get the app data directory paths
+      const storeDir = app.getPath('userData');
+      
+      console.log(`Cleaning up app data from: ${storeDir}`);
+      
+      // Delete all files in the app data directory
+      if (fs.existsSync(storeDir)) {
+        // Read all files
+        const files = fs.readdirSync(storeDir);
+        
+        // Delete each file
+        for (const file of files) {
+          const filePath = path.join(storeDir, file);
+          try {
+            // Check if it's a directory or file
+            const stat = fs.statSync(filePath);
+            
+            if (stat.isDirectory()) {
+              // Remove directory recursively
+              fs.rmdirSync(filePath, { recursive: true });
+            } else {
+              // Remove file
+              fs.unlinkSync(filePath);
+            }
+            
+            console.log(`Deleted: ${filePath}`);
+          } catch (err) {
+            console.error(`Failed to delete ${filePath}:`, err);
+          }
+        }
+      }
+      
+      // Clear any registry entries for auto-start (Windows only)
+      if (process.platform === 'win32') {
+        try {
+          app.setLoginItemSettings({ openAtLogin: false });
+          console.log('Removed login item settings');
+        } catch (err) {
+          console.error('Error removing login item settings:', err);
+        }
+      }
+      
+      resolve();
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      reject(error);
+    }
   });
 }
