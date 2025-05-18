@@ -51,14 +51,28 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      webSecurity: false // Allow loading local resources
     },
     icon: path.join(__dirname, '../renderer/assets/icon.png')
   });
 
+  // Set Content-Security-Policy to allow imports from file:// protocol
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' https: file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: file:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: file:; font-src 'self' https: file:; connect-src 'self' https:;"
+        ]
+      }
+    });
+  });
+
+  // Load the index.html file
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   
-  // Open DevTools in development mode
+  // Open DevTools in development mode only with --dev flag
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
   }
@@ -280,7 +294,15 @@ ipcMain.handle('check-ytdlp', async () => {
 });
 
 ipcMain.handle('get-video-info', async (event, url) => {
-  return await getVideoInfo(url);
+  console.log(`IPC: get-video-info called with URL: ${url}`);
+  try {
+    const result = await getVideoInfo(url);
+    console.log('Video info retrieved successfully');
+    return result;
+  } catch (error) {
+    console.error('Error in get-video-info handler:', error);
+    throw error;  // Re-throw to allow renderer to catch it
+  }
 });
 
 ipcMain.handle('download-video', async (event, { url, format, isAudio, outputPath }) => {
@@ -313,14 +335,33 @@ ipcMain.handle('get-settings', () => {
     autoPaste: store.get('autoPaste', false),
     autoUpdate: store.get('autoUpdate', true),
     lastUpdateCheck: store.get('lastUpdateCheck', null),
-    skipVersion: store.get('skipVersion', null)
+    skipVersion: store.get('skipVersion', null),
+    theme: store.get('theme', 'light'),
+    autoDetectURLs: store.get('autoDetectURLs', true),
+    autoFetchInfo: store.get('autoFetchInfo', true)
   };
 });
 
 ipcMain.handle('save-settings', (event, settings) => {
-  store.set('autoFetch', settings.autoFetch);
-  store.set('autoPaste', settings.autoPaste);
-  store.set('autoUpdate', settings.autoUpdate);
+  // Handle basic settings
+  if (settings.autoFetch !== undefined)
+    store.set('autoFetch', settings.autoFetch);
+  
+  if (settings.autoPaste !== undefined)
+    store.set('autoPaste', settings.autoPaste);
+  
+  if (settings.autoUpdate !== undefined)
+    store.set('autoUpdate', settings.autoUpdate);
+  
+  if (settings.autoDetectURLs !== undefined)
+    store.set('autoDetectURLs', settings.autoDetectURLs);
+  
+  if (settings.autoFetchInfo !== undefined)
+    store.set('autoFetchInfo', settings.autoFetchInfo);
+  
+  // Handle theme settings
+  if (settings.theme !== undefined)
+    store.set('theme', settings.theme);
   
   // Handle optional fields if they exist
   if (settings.lastUpdateCheck !== undefined) 
@@ -445,6 +486,15 @@ ipcMain.handle('download-ytdlp', async () => {
       error: error.message 
     };
   }
+});
+
+// Add this new handler near the other ipcMain handlers
+ipcMain.handle('open-dev-tools', () => {
+  if (mainWindow) {
+    mainWindow.webContents.openDevTools();
+    return true;
+  }
+  return false;
 });
 
 /**

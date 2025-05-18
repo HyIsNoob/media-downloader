@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module Test</title>
+</head>
+<body>
+  <h1>ES Module Test</h1>
+  <p>Check the browser console to see if modules loaded successfully.</p>
+
+  <script type="module">
+    import { testFunction } from './js/test-modules.js';
+    
+    console.log('Main script running');
+    console.log('Test function result:', testFunction());
+  </script>
+</body>
+</html> 
