@@ -1,8 +1,8 @@
-# Media Downloader
+![image](https://github.com/user-attachments/assets/79dbcbfd-b84f-497e-9616-b36958e9c71f)# Media Downloader
 
 A modern, cross-platform desktop application for downloading videos and audio from various platforms like YouTube, Facebook, and TikTok.
 
-![Media Downloader Screenshot](screenshot.png)
+![Media Downloader Screenshot](![image](https://github.com/user-attachments/assets/7bc3dd8a-648b-4471-b1b6-ab70121e6c0f))
 
 ## 🆕 What's New in v1.1.0
 
@@ -88,7 +88,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📸 Screenshots
 
-*Coming soon*
+![image](https://github.com/user-attachments/assets/b9f4ae7a-d433-4176-8396-ab76d47762b5)
+![image](https://github.com/user-attachments/assets/9a2101ff-ecd8-4009-a391-4c6f6653940e)
+![image](https://github.com/user-attachments/assets/ea6995a2-ac68-4d80-8892-338a72c43121)
+
 
 ## 🤝 Contributing
 
