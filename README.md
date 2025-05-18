@@ -2,7 +2,7 @@
 
 A modern, cross-platform desktop application for downloading videos and audio from various platforms like YouTube, Facebook, and TikTok.
 
-(![image](https://github.com/user-attachments/assets/7bc3dd8a-648b-4471-b1b6-ab70121e6c0f))
+![image](https://github.com/user-attachments/assets/7bc3dd8a-648b-4471-b1b6-ab70121e6c0f)
 
 ## 🆕 What's New in v1.1.0
 
