@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply transition-colors duration-300 overflow-x-hidden bg-base-100 text-secondary-900 dark:text-secondary-100;
+  }
+}
+
+@layer components {
+  /* Glass Effect */
+  .glass-card {
+    @apply bg-white/70 dark:bg-black/50 backdrop-blur-md border border-white/20 dark:border-black/20 rounded-xl shadow-lg;
+  }
+  
+  /* Custom Button Styles */
+  .btn-primary-gradient {
+    @apply bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5;
+  }
+  
+  /* Custom Animation Classes */
+  .hover-scale {
+    @apply transition-transform hover:scale-105;
+  }
+  
+  /* Custom Scrollbar */
+  .custom-scrollbar {
+    @apply scrollbar-thin scrollbar-thumb-primary-300 dark:scrollbar-thumb-primary-700 scrollbar-track-secondary-100 dark:scrollbar-track-secondary-800;
+  }
+  
+  /* Toast Notification */
+  .toast-notification {
+    @apply fixed z-50 flex items-center p-4 mb-4 rounded-lg shadow-lg animate-slide-up;
+  }
+  
+  .toast-success {
+    @apply toast-notification bg-success/90 text-white;
+  }
+  
+  .toast-error {
+    @apply toast-notification bg-error/90 text-white;
+  }
+  
+  .toast-info {
+    @apply toast-notification bg-info/90 text-white;
+  }
+  
+  .toast-warning {
+    @apply toast-notification bg-warning/90 text-white;
+  }
+  
+  /* Animated Progress Bar */
+  .progress-animated {
+    @apply relative h-2 w-full overflow-hidden rounded-full bg-primary-100 dark:bg-primary-950;
+  }
+  
+  .progress-animated::after {
+    @apply absolute top-0 h-full w-full animate-progress bg-gradient-to-r from-primary-300 via-primary-500 to-primary-700 content-[''];
+  }
+} 

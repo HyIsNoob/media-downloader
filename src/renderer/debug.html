@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Debug Page</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    button {
+      padding: 10px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    #output {
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 20px;
+      min-height: 200px;
+      overflow-y: auto;
+      max-height: 400px;
+    }
+    .dark-mode {
+      background-color: #333;
+      color: #fff;
+    }
+    .dark-mode #output {
+      background-color: #222;
+      border-color: #444;
+    }
+  </style>
+</head>
+<body>
+  <h1>Debug Page</h1>
+  <p>Testing basic functionality of the app</p>
+  
+  <div>
+    <button id="testThemeBtn">Test Theme Toggle</button>
+    <button id="testNotificationBtn">Test Notification</button>
+    <button id="testElectronAPIBtn">Test Electron API</button>
+    <button id="openDevTools">Open DevTools</button>
+  </div>
+  
+  <div>
+    <h3>Library Tests</h3>
+    <button id="testGSAPBtn">Test GSAP Import</button>
+    <button id="testToastifyBtn">Test Toastify</button>
+    <button id="testTippyBtn">Test Tippy.js</button>
+  </div>
+  
+  <div id="output">Output will appear here...</div>
+  
+  <script>
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('Debug page loaded');
+      
+      // Test theme button
+      document.getElementById('testThemeBtn').addEventListener('click', () => {
+        const isDark = document.body.classList.toggle('dark-mode');
+        log(`Theme switched to ${isDark ? 'dark' : 'light'} mode`);
+      });
+      
+      // Test notification button
+      document.getElementById('testNotificationBtn').addEventListener('click', () => {
+        try {
+          const notification = new Notification('Test Notification', {
+            body: 'This is a test notification',
+          });
+          log('Notification sent');
+        } catch (error) {
+          log(`Error creating notification: ${error.message}`);
+        }
+      });
+      
+      // Test Electron API
+      document.getElementById('testElectronAPIBtn').addEventListener('click', async () => {
+        if (window.electron) {
+          try {
+            const saveFolder = await window.electron.getSaveFolder();
+            log(`Electron API working. Save folder: ${saveFolder}`);
+          } catch (error) {
+            log(`Electron API error: ${error.message}`);
+          }
+        } else {
+          log('Electron API not available');
+        }
+      });
+      
+      // Open DevTools
+      document.getElementById('openDevTools').addEventListener('click', () => {
+        if (window.electron && window.electron.openDevTools) {
+          window.electron.openDevTools();
+          log('Opening DevTools via IPC');
+        } else {
+          log('Electron API for openDevTools not available');
+        }
+      });
+      
+      // GSAP Test
+      document.getElementById('testGSAPBtn').addEventListener('click', () => {
+        // Try both options for loading GSAP
+        try {
+          // Option 1: Load via script tag
+          const script = document.createElement('script');
+          script.src = '../../node_modules/gsap/dist/gsap.min.js';
+          script.onload = function() {
+            log('GSAP loaded via script tag');
+            
+            try {
+              // Try to use GSAP
+              if (window.gsap) {
+                gsap.to('#output', { 
+                  backgroundColor: '#e6ffe6',
+                  duration: 1,
+                  onComplete: () => {
+                    gsap.to('#output', { 
+                      backgroundColor: '',
+                      duration: 1
+                    });
+                  }
+                });
+                log('Successfully used GSAP animation!');
+              } else {
+                log('GSAP loaded but not available globally');
+              }
+            } catch (animError) {
+              log(`Error using GSAP: ${animError.message}`);
+            }
+          };
+          script.onerror = function(e) {
+            log(`Error loading GSAP script: ${e.type}`);
+          };
+          document.head.appendChild(script);
+        } catch (error) {
+          log(`Error in GSAP loading: ${error.message}`);
+        }
+      });
+      
+      // Toastify Test
+      document.getElementById('testToastifyBtn').addEventListener('click', () => {
+        try {
+          // Load toastify script
+          const script = document.createElement('script');
+          script.src = '../../node_modules/toastify-js/src/toastify.js';
+          script.onload = function() {
+            log('Toastify loaded via script tag');
+            
+            try {
+              // Try to use Toastify
+              if (window.Toastify) {
+                Toastify({
+                  text: "Test notification via Toastify!",
+                  duration: 3000,
+                  gravity: "bottom",
+                  position: "right",
+                  style: {
+                    background: "linear-gradient(to right, #00b09b, #96c93d)",
+                  }
+                }).showToast();
+                log('Successfully used Toastify!');
+              } else {
+                log('Toastify loaded but not available globally');
+              }
+            } catch (toastError) {
+              log(`Error using Toastify: ${toastError.message}`);
+            }
+          };
+          script.onerror = function(e) {
+            log(`Error loading Toastify script: ${e.type}`);
+          };
+          document.head.appendChild(script);
+        } catch (error) {
+          log(`Error in Toastify loading: ${error.message}`);
+        }
+      });
+      
+      // Tippy.js Test
+      document.getElementById('testTippyBtn').addEventListener('click', () => {
+        try {
+          // Load Popper first (dependency)
+          const popperScript = document.createElement('script');
+          popperScript.src = '../../node_modules/@popperjs/core/dist/umd/popper.min.js';
+          popperScript.onload = function() {
+            log('Popper loaded via script tag');
+            
+            // Then load Tippy
+            const tippyScript = document.createElement('script');
+            tippyScript.src = '../../node_modules/tippy.js/dist/tippy-bundle.umd.min.js';
+            tippyScript.onload = function() {
+              log('Tippy loaded via script tag');
+              
+              try {
+                // Try to use Tippy
+                if (window.tippy) {
+                  tippy('#testTippyBtn', {
+                    content: 'Tippy tooltip is working!',
+                    placement: 'bottom'
+                  });
+                  log('Successfully initialized Tippy!');
+                } else {
+                  log('Tippy loaded but not available globally');
+                }
+              } catch (tippyError) {
+                log(`Error using Tippy: ${tippyError.message}`);
+              }
+            };
+            tippyScript.onerror = function(e) {
+              log(`Error loading Tippy script: ${e.type}`);
+            };
+            document.head.appendChild(tippyScript);
+          };
+          popperScript.onerror = function(e) {
+            log(`Error loading Popper script: ${e.type}`);
+          };
+          document.head.appendChild(popperScript);
+        } catch (error) {
+          log(`Error in Tippy loading: ${error.message}`);
+        }
+      });
+    });
+    
+    // Helper function to log to the output div
+    function log(message) {
+      const output = document.getElementById('output');
+      const time = new Date().toLocaleTimeString();
+      output.innerHTML += `<div>[${time}] ${message}</div>`;
+      console.log(message);
+      
+      // Scroll to bottom
+      output.scrollTop = output.scrollHeight;
+    }
+  </script>
+</body>
+</html> 

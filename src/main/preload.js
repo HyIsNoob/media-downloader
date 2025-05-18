@@ -1,14 +1,20 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Expose IPC API to the renderer process
-contextBridge.exposeInMainWorld('electronAPI', {  // System checks
+contextBridge.exposeInMainWorld('electron', {
+  // System checks
   checkYtdlp: () => ipcRenderer.invoke('check-ytdlp'),
   downloadYtDlp: () => ipcRenderer.invoke('download-ytdlp'),
   
   // Video info and download
   getVideoInfo: (url) => ipcRenderer.invoke('get-video-info', url),
   downloadVideo: (options) => ipcRenderer.invoke('download-video', options),
-  onDownloadProgress: (callback) => ipcRenderer.on('download-progress', (_, progress) => callback(progress)),
+  onDownloadProgress: (callback) => {
+    const channel = 'download-progress';
+    ipcRenderer.on(channel, (_, progress) => callback(progress));
+    return () => ipcRenderer.removeListener(channel, callback);
+  },
+  removeDownloadProgressListener: () => ipcRenderer.removeAllListeners('download-progress'),
   
   // Playlist handling
   getPlaylistInfo: (url) => ipcRenderer.invoke('get-playlist-info', url),
@@ -27,8 +33,12 @@ contextBridge.exposeInMainWorld('electronAPI', {  // System checks
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
-  onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_, status, info) => callback(status, info)),
-    
+  onUpdateStatus: (callback) => {
+    const channel = 'update-status';
+    ipcRenderer.on(channel, (_, status, info) => callback(status, info));
+    return () => ipcRenderer.removeListener(channel, callback);
+  },
+  
   // History management
   getHistory: () => ipcRenderer.invoke('get-history'),
   addToHistory: (item) => ipcRenderer.invoke('add-to-history', item),
@@ -39,5 +49,8 @@ contextBridge.exposeInMainWorld('electronAPI', {  // System checks
   checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath),
   
   // App lifecycle
-  quitApp: () => ipcRenderer.invoke('quit-app')
+  quitApp: () => ipcRenderer.invoke('quit-app'),
+  
+  // Debug helpers
+  openDevTools: () => ipcRenderer.invoke('open-dev-tools')
 });
