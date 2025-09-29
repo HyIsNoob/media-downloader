@@ -7,7 +7,8 @@ const defaultSettings = {
   autoDetectURLs: true,
   autoFetchInfo: true,
   autoUpdate: true,
-  saveFolder: null  // Will be set from main process
+  saveFolder: null,  // Will be set from main process
+  ultraRemuxMp4: false // Default value for Ultra Remux MP4
 };
 
 // Active clipboard detection interval
@@ -38,8 +39,8 @@ async function initializeSettings() {
     
     // Get app version from package.json
     const appVersionInfo = document.getElementById('appVersionInfo');
-    if (appVersionInfo) {
-      appVersionInfo.textContent = `Media Downloader v${settings.appVersion || '1.0.0'}`;
+    if (appVersionInfo && settings.appVersion) {
+      appVersionInfo.textContent = `Media Downloader v${settings.appVersion}`;
     }
     
   } catch (error) {
@@ -132,6 +133,10 @@ function setupSettingsPage() {
   const autoDetectURLsToggle = document.getElementById('autoDetectUrls');
   const autoFetchInfoToggle = document.getElementById('autoFetchInfo');
   const autoUpdateToggle = document.getElementById('autoUpdate');
+  const autoUpdateYtDlpToggle = document.getElementById('autoUpdateYtDlpOnStart');
+  const updateYtDlpNowBtn = document.getElementById('updateYtDlpNowBtn');
+  const ytDlpCurrentVersionEl = document.getElementById('ytDlpCurrentVersion');
+  const ytDlpLastUpdatedEl = document.getElementById('ytDlpLastUpdated');
   const defaultDownloadDir = document.getElementById('defaultDownloadDir');
   const changeDefaultDirBtn = document.getElementById('changeDefaultDirBtn');
   const checkUpdateBtn = document.getElementById('checkUpdateBtn');
@@ -144,8 +149,16 @@ function setupSettingsPage() {
   autoFetchInfoToggle.checked = localStorage.getItem('autoFetchInfo') !== 'false';
   
   // Set initial value for auto update toggle if it exists
-  if (autoUpdateToggle) {
-    autoUpdateToggle.checked = localStorage.getItem('autoUpdate') !== 'false';
+  if (autoUpdateToggle) autoUpdateToggle.checked = localStorage.getItem('autoUpdate') !== 'false';
+  if (autoUpdateYtDlpToggle) autoUpdateYtDlpToggle.checked = localStorage.getItem('autoUpdateYtDlpOnStart') !== 'false';
+
+  // Populate yt-dlp version info if already stored
+  const lastVer = localStorage.getItem('lastYtDlpVersion');
+  if (lastVer && ytDlpCurrentVersionEl) ytDlpCurrentVersionEl.textContent = lastVer;
+  const lastUpd = localStorage.getItem('lastYtDlpUpdateTime');
+  if (lastUpd && ytDlpLastUpdatedEl) {
+    const d = new Date(lastUpd);
+    ytDlpLastUpdatedEl.textContent = `(Cập nhật lần cuối: ${d.toLocaleDateString()} ${d.toLocaleTimeString()})`;
   }
   
   // Get save folder
@@ -162,15 +175,15 @@ function setupSettingsPage() {
           autoDetectURLs: autoDetectURLsToggle.checked,
           autoFetchInfo: autoFetchInfoToggle.checked,
           autoUpdate: autoUpdateToggle ? autoUpdateToggle.checked : true,
+          autoUpdateYtDlpOnStart: autoUpdateYtDlpToggle ? autoUpdateYtDlpToggle.checked : true,
           theme: localStorage.getItem('theme') || 'light'
         });
         
         // Update localStorage
         localStorage.setItem('autoDetectURLs', autoDetectURLsToggle.checked);
         localStorage.setItem('autoFetchInfo', autoFetchInfoToggle.checked);
-        if (autoUpdateToggle) {
-          localStorage.setItem('autoUpdate', autoUpdateToggle.checked);
-        }
+        if (autoUpdateToggle) localStorage.setItem('autoUpdate', autoUpdateToggle.checked);
+        if (autoUpdateYtDlpToggle) localStorage.setItem('autoUpdateYtDlpOnStart', autoUpdateYtDlpToggle.checked);
         
         // Apply settings immediately
         initClipboardDetection();
@@ -297,4 +310,94 @@ function setupSettingsPage() {
       }
     });
   }
-} 
+
+  // yt-dlp auto update toggle
+  if (autoUpdateYtDlpToggle) {
+    autoUpdateYtDlpToggle.addEventListener('change', (e) => {
+      localStorage.setItem('autoUpdateYtDlpOnStart', e.target.checked);
+      NotificationManager.info(`Tự cập nhật yt-dlp khi khởi động ${e.target.checked ? 'bật' : 'tắt'}`);
+      window.electron.saveSettings({ autoUpdateYtDlpOnStart: e.target.checked });
+    });
+  }
+
+  // Manual update button
+  if (updateYtDlpNowBtn) {
+    updateYtDlpNowBtn.addEventListener('click', async () => {
+      try {
+        updateYtDlpNowBtn.disabled = true;
+        const original = updateYtDlpNowBtn.innerHTML;
+        updateYtDlpNowBtn.innerHTML = '<i class="bi bi-arrow-repeat animate-spin me-1"></i> Đang cập nhật...';
+        const res = await window.electron.updateYtDlpNow();
+        // Result will also be received via onYtDlpUpdateResult, but we can optimistic update
+        if (res && res.version && ytDlpCurrentVersionEl) {
+          ytDlpCurrentVersionEl.textContent = res.version;
+        }
+        NotificationManager.info('Đang kiểm tra kết quả cập nhật...');
+        setTimeout(() => {
+          updateYtDlpNowBtn.disabled = false;
+          updateYtDlpNowBtn.innerHTML = original;
+        }, 1500);
+      } catch (err) {
+        console.error('yt-dlp manual update error:', err);
+        NotificationManager.error('Cập nhật yt-dlp thất bại');
+        updateYtDlpNowBtn.disabled = false;
+        updateYtDlpNowBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Cập nhật ngay';
+      }
+    });
+  }
+
+  // Listen for yt-dlp update results
+  if (window.electron.onYtDlpUpdateResult) {
+    window.electron.onYtDlpUpdateResult((data) => {
+      if (!data) return;
+      const { updated, oldVersion, newVersion, version, error } = data;
+      if (error) {
+        NotificationManager.error(`yt-dlp update error: ${error}`);
+        return;
+      }
+      const finalVer = newVersion || version;
+      if (finalVer && ytDlpCurrentVersionEl) ytDlpCurrentVersionEl.textContent = finalVer;
+      const now = new Date();
+      if (ytDlpLastUpdatedEl) {
+        ytDlpLastUpdatedEl.textContent = `(Cập nhật lần cuối: ${now.toLocaleDateString()} ${now.toLocaleTimeString()})`;
+      }
+      localStorage.setItem('lastYtDlpVersion', finalVer || '');
+      localStorage.setItem('lastYtDlpUpdateTime', now.toISOString());
+      if (updated) {
+        NotificationManager.success(`Đã cập nhật yt-dlp lên ${finalVer}`);
+      } else {
+        NotificationManager.info(`yt-dlp đã ở phiên bản mới nhất (${finalVer})`);
+      }
+    });
+  }
+
+  // Render additional settings
+  renderSettings();
+}
+
+// Render additional settings UI elements
+function renderSettings(settings) {
+  // Render advanced settings section if not already rendered
+  const advancedContainer = document.getElementById('advancedSettingsExtra');
+  if (advancedContainer && !document.getElementById('ultraRemuxToggle')) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between mt-3';
+    row.innerHTML = `
+      <div>
+        <div class="font-medium">Ultra Remux MP4</div>
+        <div class="text-xs text-secondary-500 dark:text-secondary-400">Always remux best video+audio to MP4 (largest possible)</div>
+      </div>
+      <label class="inline-flex items-center cursor-pointer">
+        <input id="ultraRemuxToggle" type="checkbox" class="sr-only peer" ${settings.ultraRemuxMp4 ? 'checked':''}>
+        <div class="w-11 h-6 bg-secondary-300 peer-focus:outline-none rounded-full peer dark:bg-secondary-700 peer-checked:bg-primary-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+      </label>`;
+    advancedContainer.appendChild(row);
+    const toggle = row.querySelector('#ultraRemuxToggle');
+    toggle.addEventListener('change', async () => {
+      const s = await window.electron.getSettings();
+      s.ultraRemuxMp4 = toggle.checked;
+      await window.electron.saveSettings(s);
+      NotificationManager.info('Ultra Remux setting saved');
+    });
+  }
+}

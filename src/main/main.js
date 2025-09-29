@@ -43,6 +43,71 @@ let updateCheckInterval;
 // Track active download processes
 let activeProcesses = [];
 
+// Helper: auto update yt-dlp binary (non-blocking). Returns promise with {updated:boolean, version?:string}
+function autoUpdateYtDlp({ force = false } = {}) {
+  return new Promise((resolve) => {
+    const ytdlpPath = store.get('ytdlpPath', 'yt-dlp');
+    const start = Date.now();
+    const verProc = spawn(ytdlpPath, ['--version']);
+    let currentVer = '';
+    verProc.stdout.on('data', d => currentVer += d.toString());
+    verProc.on('close', () => {
+      currentVer = currentVer.trim();
+      if (currentVer) store.set('lastYtDlpVersion', currentVer);
+      const upd = spawn(ytdlpPath, ['-U']);
+      let updOut = '';
+      upd.stdout.on('data', d => updOut += d.toString());
+      upd.stderr.on('data', d => updOut += d.toString());
+      upd.on('close', () => {
+        const ver2 = spawn(ytdlpPath, ['--version']);
+        let newVer = '';
+        ver2.stdout.on('data', d => newVer += d.toString());
+        ver2.on('close', () => {
+          newVer = newVer.trim();
+          if (newVer) {
+            store.set('lastYtDlpVersion', newVer);
+            store.set('lastYtDlpUpdateTime', new Date().toISOString());
+          }
+            const updated = currentVer && newVer && currentVer !== newVer;
+            console.log(`[yt-dlp auto-update] old=${currentVer} new=${newVer} updated=${updated}`);
+            if (mainWindow) {
+              mainWindow.webContents.send('ytdlp-update-result', { updated, oldVersion: currentVer, newVersion: newVer, raw: updOut });
+            }
+            resolve({ updated, version: newVer || currentVer });
+        });
+      });
+      upd.on('error', err => {
+        console.warn('yt-dlp update error:', err.message);
+        resolve({ updated: false, error: err.message, version: currentVer });
+      });
+    });
+    verProc.on('error', err => {
+      console.warn('Cannot get yt-dlp version before updating:', err.message);
+      const upd = spawn(ytdlpPath, ['-U']);
+      upd.on('close', () => resolve({ updated: false, error: 'version unknown' }));
+    });
+  });
+}
+
+// Convert human-readable size number + unit to bytes
+function convertToBytes(num, unit) {
+  if (!num || !unit) return 0;
+  const normalized = unit.toUpperCase();
+  const factor = normalized.includes('IB') ? 1024 : 1000; // iB vs B
+  if (normalized.startsWith('K')) return num * factor;
+  if (normalized.startsWith('M')) return num * factor * factor;
+  if (normalized.startsWith('G')) return num * factor * factor * factor;
+  return num; // bytes
+}
+
+function hmsToSeconds(str) {
+  if (!str) return 0;
+  const parts = str.split(':').map(p => parseInt(p, 10));
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
 // Create the main window
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -56,6 +121,9 @@ function createWindow() {
     },
     icon: path.join(__dirname, '../renderer/assets/icon.png')
   });
+
+  // Maximize immediately per requirement
+  try { mainWindow.maximize(); } catch(e) { console.warn('Unable to maximize window:', e.message); }
 
   // Set Content-Security-Policy to allow imports from file:// protocol
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
@@ -338,7 +406,14 @@ ipcMain.handle('get-settings', () => {
     skipVersion: store.get('skipVersion', null),
     theme: store.get('theme', 'light'),
     autoDetectURLs: store.get('autoDetectURLs', true),
-    autoFetchInfo: store.get('autoFetchInfo', true)
+    autoFetchInfo: store.get('autoFetchInfo', true),
+    useTikTokCookies: store.get('useTikTokCookies', false),
+    tiktokCookiesPath: store.get('tiktokCookiesPath', ''),
+    autoUpdateYtDlpOnStart: store.get('autoUpdateYtDlpOnStart', true),
+    lastYtDlpVersion: store.get('lastYtDlpVersion', null),
+    lastYtDlpUpdateTime: store.get('lastYtDlpUpdateTime', null),
+    appVersion: app.getVersion(),
+    ultraRemuxMp4: store.get('ultraRemuxMp4', false)
   };
 });
 
@@ -358,6 +433,18 @@ ipcMain.handle('save-settings', (event, settings) => {
   
   if (settings.autoFetchInfo !== undefined)
     store.set('autoFetchInfo', settings.autoFetchInfo);
+  if (settings.useTikTokCookies !== undefined)
+    store.set('useTikTokCookies', settings.useTikTokCookies);
+  if (settings.tiktokCookiesPath !== undefined)
+    store.set('tiktokCookiesPath', settings.tiktokCookiesPath);
+  
+  // Handle new settings
+  if (settings.autoUpdateYtDlpOnStart !== undefined)
+    store.set('autoUpdateYtDlpOnStart', settings.autoUpdateYtDlpOnStart);
+  if (settings.lastYtDlpVersion !== undefined)
+    store.set('lastYtDlpVersion', settings.lastYtDlpVersion);
+  if (settings.lastYtDlpUpdateTime !== undefined)
+    store.set('lastYtDlpUpdateTime', settings.lastYtDlpUpdateTime);
   
   // Handle theme settings
   if (settings.theme !== undefined)
@@ -369,6 +456,7 @@ ipcMain.handle('save-settings', (event, settings) => {
   
   if (settings.skipVersion !== undefined) 
     store.set('skipVersion', settings.skipVersion);
+  if (typeof settings.ultraRemuxMp4 !== 'undefined') store.set('ultraRemuxMp4', settings.ultraRemuxMp4);
   
   return true;
 });
@@ -406,6 +494,25 @@ ipcMain.handle('open-file', (event, filePath) => {
 
 ipcMain.handle('open-folder', (event, folderPath) => {
   require('electron').shell.showItemInFolder(folderPath);
+});
+
+// Allow user to pick a TikTok cookies.txt file
+ipcMain.handle('set-tiktok-cookies-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [ { name: 'Cookies text file', extensions: ['txt'] } ]
+  });
+  if (!result.canceled && result.filePaths.length > 0) {
+    const filePath = result.filePaths[0];
+    store.set('tiktokCookiesPath', filePath);
+    return { success: true, path: filePath };
+  }
+  return { success: false, path: store.get('tiktokCookiesPath', '') };
+});
+
+// Manual trigger for yt-dlp update
+ipcMain.handle('update-ytdlp-now', async () => {
+  return await autoUpdateYtDlp({ force: true });
 });
 
 // Check if a file exists
@@ -533,220 +640,204 @@ function testYtDlpBinary(ytdlpPath) {
     } catch (error) {
       reject(error);
     }
+  
+    // Auto update yt-dlp at startup if enabled
+    const autoUpd = store.get('autoUpdateYtDlpOnStart', true);
+    if (autoUpd) {
+      setTimeout(() => {
+        console.log('Auto updating yt-dlp on startup...');
+        autoUpdateYtDlp().then(res => {
+          console.log('Auto update yt-dlp result:', res);
+        });
+      }, 2000);
+    }
   });
 }
 
 // Helper function to get video information using yt-dlp
 async function getVideoInfo(url) {
   return new Promise((resolve, reject) => {
-    // Get yt-dlp path from settings
     const ytdlpPath = store.get('ytdlpPath', 'yt-dlp');
-    
-    console.log(`Fetching video info with ${ytdlpPath} for URL: ${url}`);
-    
-    // Use additional parameters to make the fetch more reliable
-    const ytdlp = spawn(ytdlpPath, [
+    let attemptedAutoUpdate = false;
+    const useTikTokCookies = store.get('useTikTokCookies', false);
+    const tiktokCookiesPath = store.get('tiktokCookiesPath', '');
+
+    function isTikTokUrl(u) {
+      return /tiktok\.com\//i.test(u);
+    }
+
+    const baseArgs = [
       '--dump-json',
       '--no-playlist',
       '--no-warnings',
       '--no-call-home',
       '--skip-download',
-      '--force-ipv4',
-      url
-    ]);
-    
-    // Track the process so we can kill it if needed
-    activeProcesses.push(ytdlp);
+      '--force-ipv4'
+    ];
 
-    let stdout = '';
-    let stderr = '';
-    
-    // Set timeout to avoid hanging
-    const timeout = setTimeout(() => {
-      ytdlp.kill();
-      reject(new Error('Timeout: yt-dlp took too long to respond'));
-    }, 30000); // 30 seconds timeout
-
-    ytdlp.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    ytdlp.stderr.on('data', (data) => {
-      stderr += data.toString();
-      console.log('yt-dlp stderr:', stderr);
-    });
-    
-    ytdlp.on('error', (error) => {
-      clearTimeout(timeout);
-      console.error('Error spawning yt-dlp:', error);
-      reject(new Error(`Error launching yt-dlp: ${error.message}`));
-    });
-
-    ytdlp.on('close', (code) => {
-      clearTimeout(timeout);      if (code === 0 && stdout.trim()) {
-        try {
-          // Log for debugging
-          console.log('yt-dlp output received, length:', stdout.length);
-          
-          const videoInfo = JSON.parse(stdout);
-          console.log('Video info parsed successfully');
-          
-          // Validate essential video information
-          if (!videoInfo.title || !videoInfo.formats) {
-            console.error('Missing essential video info');
-            reject(new Error('Invalid video data returned'));
-            return;
-          }
-            // Log all available formats for debugging
-          console.log('Available formats:', JSON.stringify(videoInfo.formats.map(f => ({
-            id: f.format_id,
-            ext: f.ext,
-            res: f.height,
-            note: f.format_note,
-            vcodec: f.vcodec,
-            acodec: f.acodec
-          })), null, 2));          // Extract and clean up formats
-          let formats = videoInfo.formats.map(format => ({
-            formatId: format.format_id,
-            formatNote: format.format_note || '',
-            filesize: format.filesize,
-            ext: format.ext,
-            resolution: format.resolution || '',
-            height: format.height,
-            width: format.width,
-            fps: format.fps,
-            vcodec: format.vcodec,
-            acodec: format.acodec,
-            isAudioOnly: format.vcodec === 'none',
-            isVideoOnly: format.acodec === 'none',
-            tbr: format.tbr || 0,  // Total bitrate
-            abr: format.abr || 0,  // Audio bitrate
-            vbr: format.vbr || 0,  // Video bitrate
-          }));
-          
-          console.log('Cleaned formats:', formats.length);
-          
-          // We only want exactly these standard resolutions
-          const targetResolutions = [144, 360, 480, 720, 1080, 1440, 2160];
-          
-          // Create simplified video formats (one per resolution)
-          const simplifiedVideoFormats = [];
-          
-          // Process each target resolution
-          targetResolutions.forEach(targetRes => {
-            // For each resolution, we'll create a custom format entry that will use our download logic
-            let customFormat = null;
-            
-            // Find formats that are close to our target resolution (within 10%)
-            const matchingFormats = formats.filter(format => {
-              if (!format.height || format.isAudioOnly) return false;
-              const heightDiff = Math.abs(format.height - targetRes);
-              return heightDiff / targetRes <= 0.1; // Within 10% of target
-            });
-            
-            // Check if we have any matching format at this resolution
-            if (matchingFormats.length > 0) {
-              // Find a representative format to use for display info
-              const bestMatchFormat = matchingFormats.sort((a, b) => {
-                // Prefer formats with higher bitrate
-                return b.tbr - a.tbr;
-              })[0];
-              
-              // Create a custom format that will be handled specially in our download function
-              customFormat = {
-                formatId: `res-${targetRes}`, // Special format ID for our custom handling
-                formatNote: targetRes >= 2160 ? '4K' : 
-                            targetRes >= 1440 ? '2K' :
-                            targetRes >= 1080 ? '1080p HD' :
-                            targetRes >= 720 ? '720p HD' :
-                            `${targetRes}p`,
-                height: targetRes,
-                width: bestMatchFormat.width,
-                ext: 'mp4',  // Always MP4
-                filesize: bestMatchFormat.filesize,
-                isAudioOnly: false,
-                isVideoOnly: false,
-                tbr: bestMatchFormat.tbr,
-                vcodec: bestMatchFormat.vcodec
-              };
-              
-              simplifiedVideoFormats.push(customFormat);
-            }
-          });
-          
-          // Sort by resolution (ascending)
-          simplifiedVideoFormats.sort((a, b) => a.height - b.height);
-          
-          // These are our simplified formats that will be shown to the user and handled specially
-          
-          // Find best audio format for reference quality
-          const bestAudioFormat = formats.filter(f => f.isAudioOnly)
-            .sort((a, b) => (b.abr || 0) - (a.abr || 0))[0];
-            
-          const bestAudioBitrate = bestAudioFormat ? bestAudioFormat.abr || 0 : 0;
-          console.log(`Best available audio bitrate: ${bestAudioBitrate}kbps`);
-          
-          // Add simplified audio options (always converted to MP3)
-          const audioFormats = [
-            {
-              formatId: 'audio-128',
-              formatNote: 'MP3 128kbps',
-              ext: 'mp3', 
-              isAudioOnly: true,
-              isVideoOnly: false,
-              quality: 'Standard Quality',
-              filesize: bestAudioFormat ? Math.round(bestAudioFormat.filesize * 0.5) : null
-            },
-            {
-              formatId: 'audio-192',
-              formatNote: 'MP3 192kbps',
-              ext: 'mp3',
-              isAudioOnly: true,
-              isVideoOnly: false,
-              quality: 'High Quality',
-              filesize: bestAudioFormat ? Math.round(bestAudioFormat.filesize * 0.75) : null
-            },
-            {
-              formatId: 'audio-320',
-              formatNote: 'MP3 320kbps',
-              ext: 'mp3',
-              isAudioOnly: true,
-              isVideoOnly: false,
-              quality: 'Best Quality',
-              filesize: bestAudioFormat ? Math.round(bestAudioFormat.filesize * 1.2) : null
-            }
-          ];
-          
-          // Combine simplified video formats with audio formats
-          const combinedFormats = [...simplifiedVideoFormats, ...audioFormats];          resolve({
-            id: videoInfo.id,
-            title: videoInfo.title,
-            description: videoInfo.description,
-            thumbnail: videoInfo.thumbnail,
-            channel: videoInfo.channel || videoInfo.uploader,
-            duration: videoInfo.duration,
-            uploadDate: videoInfo.upload_date,
-            viewCount: videoInfo.view_count,
-            likeCount: videoInfo.like_count,
-            formats: combinedFormats // Use our simplified formats instead of raw formats
-          });} catch (error) {
-          console.error('Error parsing JSON:', error);
-          console.error('Raw stdout output:', stdout.substring(0, 500) + '...');
-          reject(new Error(`Error parsing video info: ${error.message}`));
-        }
-      } else {
-        // Log the error details
-        console.error(`yt-dlp exited with code ${code}`);
-        console.error('stderr:', stderr);
-        console.error('stdout:', stdout);
-        
-        // Try to extract a meaningful error message
-        const errorMatch = stderr.match(/ERROR:\s*(.*?)(\n|$)/);
-        const errorMsg = errorMatch ? errorMatch[1] : 'Unknown error occurred';
-        
-        reject(new Error(`Error fetching video info: ${errorMsg}`));
+    function runFetch(extraArgs = [], attempt = 1) {
+      console.log(`Fetching video info (attempt ${attempt}) with ${ytdlpPath} for URL: ${url}`);
+      const args = [...baseArgs];
+      // If TikTok and cookies enabled
+      if (isTikTokUrl(url) && useTikTokCookies && tiktokCookiesPath && fs.existsSync(tiktokCookiesPath)) {
+        console.log('Using TikTok cookies file:', tiktokCookiesPath);
+        args.push('--cookies', tiktokCookiesPath);
+        // Ensure UA/headers even on attempt 1 if cookies are present
+        args.push('--user-agent','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36');
+        args.push('--add-header','Referer: https://www.tiktok.com/');
+        args.push('--add-header','Origin: https://www.tiktok.com');
       }
-    });
+      args.push(...extraArgs, url);
+      const ytdlp = spawn(ytdlpPath, args);
+      activeProcesses.push(ytdlp);
+
+      let stdout = '';
+      let stderr = '';
+      const timeout = setTimeout(() => {
+        ytdlp.kill();
+        reject(new Error('Timeout: yt-dlp took too long to respond'));
+      }, 30000);
+
+      ytdlp.stdout.on('data', d => stdout += d.toString());
+      ytdlp.stderr.on('data', d => { stderr += d.toString(); });
+      ytdlp.on('error', err => {
+        clearTimeout(timeout);
+        reject(new Error(`Error launching yt-dlp: ${err.message}`));
+      });
+      ytdlp.on('close', code => {
+        clearTimeout(timeout);
+        if (code === 0 && stdout.trim()) {
+          try {
+            const videoInfo = JSON.parse(stdout);
+            if (!videoInfo.title || !videoInfo.formats) {
+              reject(new Error('Invalid video data returned'));
+              return;
+            }
+            let formats = videoInfo.formats.map(format => ({
+              formatId: format.format_id,
+              formatNote: format.format_note || '',
+              filesize: format.filesize,
+              ext: format.ext,
+              resolution: format.resolution || '',
+              height: format.height,
+              width: format.width,
+              fps: format.fps,
+              vcodec: format.vcodec,
+              acodec: format.acodec,
+              isAudioOnly: format.vcodec === 'none',
+              isVideoOnly: format.acodec === 'none',
+              tbr: format.tbr || 0,
+              abr: format.abr || 0,
+              vbr: format.vbr || 0,
+            }));
+            const targetResolutions = [144, 360, 480, 720, 1080, 1440, 2160];
+            const simplifiedVideoFormats = [];
+            targetResolutions.forEach(targetRes => {
+              let customFormat = null;
+              const matchingFormats = formats.filter(f => {
+                if (!f.height || f.isAudioOnly) return false;
+                const heightDiff = Math.abs(f.height - targetRes);
+                return heightDiff / targetRes <= 0.1;
+              });
+              if (matchingFormats.length) {
+                const bestMatchFormat = matchingFormats.sort((a,b)=> b.tbr - a.tbr)[0];
+                customFormat = {
+                  formatId: `res-${targetRes}`,
+                  formatNote: targetRes >= 2160 ? '4K' : targetRes >= 1440 ? '2K' : targetRes >= 1080 ? '1080p HD' : targetRes >= 720 ? '720p HD' : `${targetRes}p`,
+                  height: targetRes,
+                  width: bestMatchFormat.width,
+                  ext: 'mp4',
+                  filesize: bestMatchFormat.filesize,
+                  isAudioOnly: false,
+                  isVideoOnly: false,
+                  tbr: bestMatchFormat.tbr,
+                  vcodec: bestMatchFormat.vcodec
+                };
+                simplifiedVideoFormats.push(customFormat);
+              }
+            });
+            simplifiedVideoFormats.sort((a,b)=> a.height - b.height);
+            const bestAudioFormat = formats.filter(f=> f.isAudioOnly).sort((a,b)=>(b.abr||0)-(a.abr||0))[0];
+            const audioFormats = [
+              { formatId:'audio-128', formatNote:'MP3 128kbps', ext:'mp3', isAudioOnly:true, isVideoOnly:false, quality:'Standard Quality', filesize: bestAudioFormat ? Math.round(bestAudioFormat.filesize * 0.5) : null },
+              { formatId:'audio-192', formatNote:'MP3 192kbps', ext:'mp3', isAudioOnly:true, isVideoOnly:false, quality:'High Quality', filesize: bestAudioFormat ? Math.round(bestAudioFormat.filesize * 0.75) : null },
+              { formatId:'audio-320', formatNote:'MP3 320kbps', ext:'mp3', isAudioOnly:true, isVideoOnly:false, quality:'Best Quality', filesize: bestAudioFormat ? Math.round(bestAudioFormat.filesize * 1.2) : null }
+            ];
+            const combinedFormats = [...simplifiedVideoFormats, ...audioFormats];
+            const bestVideoAny = formats.filter(f=> !f.isAudioOnly && f.height).sort((a,b)=> (b.tbr||0)-(a.tbr||0))[0];
+            const bestVideoMp4 = formats.filter(f=> !f.isAudioOnly && f.height && f.ext === 'mp4').sort((a,b)=> (b.tbr||0)-(a.tbr||0))[0];
+            const bestAudioAny = formats.filter(f=> f.isAudioOnly).sort((a,b)=> (b.abr||0)-(a.abr||0))[0];
+            if(bestVideoMp4 && bestAudioAny) {
+              combinedFormats.unshift({
+                formatId:'best-mp4',
+                formatNote:'Best (MP4)',
+                height: bestVideoMp4.height,
+                ext:'mp4',
+                isAudioOnly:false,
+                isVideoOnly:false,
+                filesize: (bestVideoMp4.filesize||0) + (bestAudioAny.filesize||0),
+                tbr: (bestVideoMp4.tbr||0) + (bestAudioAny.abr||0),
+                vcodec: bestVideoMp4.vcodec
+              });
+            }
+            if(bestVideoAny && bestAudioAny) {
+              combinedFormats.unshift({
+                formatId:'best-any',
+                formatNote:'Best (Any Codec)',
+                height: bestVideoAny.height,
+                ext: bestVideoAny.ext,
+                isAudioOnly:false,
+                isVideoOnly:false,
+                filesize: (bestVideoAny.filesize||0) + (bestAudioAny.filesize||0),
+                tbr: (bestVideoAny.tbr||0) + (bestAudioAny.abr||0),
+                vcodec: bestVideoAny.vcodec
+              });
+            }
+            resolve({
+              id: videoInfo.id,
+              title: videoInfo.title,
+              description: videoInfo.description,
+              thumbnail: videoInfo.thumbnail,
+              channel: videoInfo.channel || videoInfo.uploader,
+              duration: videoInfo.duration,
+              uploadDate: videoInfo.upload_date,
+              viewCount: videoInfo.view_count,
+              likeCount: videoInfo.like_count,
+              formats: combinedFormats
+            });
+          } catch (e) {
+            reject(new Error(`Error parsing video info: ${e.message}`));
+          }
+        } else {
+          const tiktokExtraction = /TikTok].*Unable to extract webpage video data/i.test(stderr);
+          if (tiktokExtraction && !attemptedAutoUpdate) {
+            console.warn('TikTok extraction failed. Attempting auto-update then retry...');
+            attemptedAutoUpdate = true;
+            const updater = spawn(ytdlpPath, ['-U']);
+            let updOut = '';
+            updater.stdout.on('data', d => updOut += d.toString());
+            updater.stderr.on('data', d => updOut += d.toString());
+            updater.on('close', () => {
+              // Retry with desktop UA & headers which sometimes help
+              const headerArgs = [
+                '--user-agent','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+                '--add-header','Referer: https://www.tiktok.com/',
+                '--add-header','Origin: https://www.tiktok.com'
+              ];
+              runFetch(headerArgs, 2);
+            });
+          } else if (tiktokExtraction && attemptedAutoUpdate && attempt === 2) {
+            reject(new Error('TikTok video extraction failed even after auto-updating yt-dlp. The video layout may have changed. Please try again later or supply TikTok cookies (export from browser) to improve access.'));
+          } else {
+            const errorMatch = stderr.match(/ERROR:\s*(.*?)(\n|$)/);
+            const errorMsg = errorMatch ? errorMatch[1] : 'Unknown error occurred';
+            reject(new Error(`Error fetching video info: ${errorMsg}`));
+          }
+        }
+      });
+    }
+
+    runFetch();
   });
 }
 
@@ -806,6 +897,8 @@ async function getPlaylistInfo(url) {
 
 // Helper function to download video using yt-dlp
 async function downloadVideo(url, format, isAudio, outputPath, progressCallback) {
+  emitInitialProgress(progressCallback);
+  const ultraRemux = store.get('ultraRemuxMp4', false);
   return new Promise((resolve, reject) => {
     // Get yt-dlp path from settings
     const ytdlpPath = store.get('ytdlpPath', 'yt-dlp');
@@ -848,36 +941,44 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
       }
     } else {
       // Video download logic - simplified based on our custom format IDs
-      if (format && format.startsWith('res-')) {
-        // This is our custom resolution format (e.g., res-720)
-        const resolution = parseInt(format.replace('res-', ''));
-        
-        if (!isNaN(resolution)) {
-          console.log(`Downloading video at ${resolution}p with audio`);
-          // Sử dụng format selector đơn giản hơn và tránh codec Opus
-          args.push('-f', `bv*[height<=${resolution}][ext=mp4][vcodec!*=av01]+ba[ext=m4a][acodec!=opus]/b[height<=${resolution}]`);
+      if (format === 'best-any') {
+        if (ultraRemux) {
+          console.log('Ultra remux enabled: bestvideo+bestaudio -> mp4');
+          args.push('-f','bestvideo+bestaudio/best');
+          args.push('--merge-output-format','mp4');
         } else {
-          // Fallback if parsing failed
-          console.log('Resolution parsing failed, using default selector');
-          args.push('-f', 'bv*[ext=mp4]+ba[ext=m4a][acodec!=opus]/b');
+          console.log('Best any codec without forced remux');
+          args.push('-f','bestvideo+bestaudio/best');
         }
-      } else if (format === 'best') {
-        // This is our "Best Quality" option
-        console.log('Using best quality video and audio');
-        args.push('-f', 'bv*[ext=mp4][vcodec!*=av01]+ba[ext=m4a][acodec!=opus]/b');
+      } else if (format === 'best-mp4' || format === 'best') {
+        console.log('Selecting best MP4 quality (may remux)');
+        args.push('-f','bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best');
+        args.push('--merge-output-format','mp4');
+      } else if (format === 'ultra-remux') {
+        console.log('Explicit ultra-remux selection');
+          args.push('-f','bestvideo+bestaudio/best');
+          args.push('--merge-output-format','mp4');
+      } else if (format && format.startsWith('res-')) {
+        const resolution = parseInt(format.replace('res-',''));
+        if (!isNaN(resolution)) {
+          console.log(`Downloading video at ${resolution}p with audio (codec agnostic)`);
+          args.push('-f',`bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`);
+          // Remux only if ultraRemux or user chose mp4-specific resolution? We'll always remux for consistency.
+          args.push('--merge-output-format','mp4');
+        } else {
+          console.log('Resolution parsing failed, using fallback best-any');
+          args.push('-f','bestvideo+bestaudio/best');
+          if (ultraRemux) args.push('--merge-output-format','mp4');
+        }
       } else if (format && !isNaN(parseInt(format))) {
-        // This is a direct format ID from YouTube
         console.log(`Using specific format ID: ${format} + merging with best audio`);
-        // Even with specific format, we still want to ensure it has audio
-        args.push('-f', `${format}+ba[ext=m4a][acodec!=opus]/b`);
+        args.push('-f',`${format}+bestaudio/best`);
+        args.push('--merge-output-format','mp4');
       } else {
-        // Default format selector for videos if no valid format is specified
-        console.log('Using default video format selector');
-        args.push('-f', 'bv*[ext=mp4]+ba[ext=m4a][acodec!=opus]/b');
+        console.log('Defaulting to best-any selector');
+        args.push('-f','bestvideo+bestaudio/best');
+        if (ultraRemux) args.push('--merge-output-format','mp4');
       }
-      
-      // Always ensure we get an MP4 as the final result for videos
-      args.push('--merge-output-format', 'mp4');
     }
     
     // Add output path and URL
@@ -896,110 +997,64 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
     activeProcesses.push(ytdlp);
 
     let stderr = '';
-    let totalSize = 0;
-    let downloadedSize = 0;
-    let eta = '';
-    let speed = '';    
+  let totalSize = 0; // bytes
+  let downloadedSize = 0; // bytes
+  let eta = 0; // seconds
+  let speed = 0; // bytes per second
     let isCompleted = false; // Flag to track if download has completed
+    
+    // Emit initial progress to update UI immediately
+    emitInitialProgress(progressCallback);
     
     ytdlp.stdout.on('data', (data) => {
       const output = data.toString();
-      console.log('yt-dlp output:', output);
-      
-      // Detect completion pattern when merging is done
-      if (output.includes("Deleting original file") || output.includes("has already been downloaded") ||
-          output.includes("100% of") && output.includes("in 00:")) {
-        isCompleted = true;
-      }
-      
-      // Parse progress information from yt-dlp output (improved regex to catch more formats)
-      const downloadMatch = output.match(/(\d+\.\d+)%\s+of\s+~?(\d+\.\d+)(\w+)\s+at\s+(\d+\.\d+)(\w+\/s)\s+ETA\s+(\d+:\d+)/);
-      if (downloadMatch) {
-        const percent = parseFloat(downloadMatch[1]);
-        totalSize = parseFloat(downloadMatch[2]);
-        const totalSizeUnit = downloadMatch[3]; 
-        speed = `${downloadMatch[4]}${downloadMatch[5]}`;
-        eta = downloadMatch[6];
-        
-        downloadedSize = (totalSize * percent) / 100;
-        
-        // Send progress update immediately
-        progressCallback({
-          percent,
-          downloaded: downloadedSize,
-          total: totalSize,
-          unit: totalSizeUnit,
-          speed,
-          eta
-        });
-        
-        // Mark as completed if we reach 100%
-        if (percent >= 100) {
-          isCompleted = true;
+      const segments = output.split(/\r|\n/).filter(Boolean);
+      segments.forEach(line => {
+        const downloadMatch = line.match(/(\d+\.\d+)%\s+of\s+~?(\d+\.\d+)([KMG]?i?B)\s+at\s+(\d+\.\d+)([KMG]?i?B)\/s\s+ETA\s+(\d+:\d+)/i);
+        const compactMatch = line.match(/(\d+\.\d+)%\s+(\d+\.\d+)([KMG]?i?B)\s+at\s+(\d+\.\d+)([KMG]?i?B)\/s\s+ETA\s+(\d+:\d+)/i);
+        const simpleMatch = line.match(/(\d+\.\d+)%\s+(\d+\.\d+)([KMG]?i?B)\s+at\s+(\d+\.\d+)([KMG]?i?B)\/s/i);
+        let matched = false;
+        if (downloadMatch) {
+          matched = true;
+          const percent = parseFloat(downloadMatch[1]);
+          const totalNum = parseFloat(downloadMatch[2]);
+          const totalUnit = downloadMatch[3];
+          const speedNum = parseFloat(downloadMatch[4]);
+          const speedUnit = downloadMatch[5];
+          const etaStr = downloadMatch[6];
+          totalSize = convertToBytes(totalNum, totalUnit);
+          speed = convertToBytes(speedNum, speedUnit);
+          eta = hmsToSeconds(etaStr);
+          downloadedSize = (totalSize * percent) / 100;
+          progressCallback({ percent, downloaded: downloadedSize, total: totalSize, speedBytes: speed, etaSeconds: eta });
+        } else if (compactMatch) {
+          matched = true;
+          const percent = parseFloat(compactMatch[1]);
+          const downloadedNum = parseFloat(compactMatch[2]);
+          const downloadedUnit = compactMatch[3];
+          const speedNum = parseFloat(compactMatch[4]);
+          const speedUnit = compactMatch[5];
+          const etaStr = compactMatch[6];
+          downloadedSize = convertToBytes(downloadedNum, downloadedUnit);
+          speed = convertToBytes(speedNum, speedUnit);
+          eta = hmsToSeconds(etaStr);
+          progressCallback({ percent, downloaded: downloadedSize, total: totalSize || 0, speedBytes: speed, etaSeconds: eta });
+        } else if (simpleMatch) {
+          matched = true;
+          const percent = parseFloat(simpleMatch[1]);
+          const downloadedNum = parseFloat(simpleMatch[2]);
+          const downloadedUnit = simpleMatch[3];
+          const speedNum = parseFloat(simpleMatch[4]);
+          const speedUnit = simpleMatch[5];
+          downloadedSize = convertToBytes(downloadedNum, downloadedUnit);
+          speed = convertToBytes(speedNum, speedUnit);
+          progressCallback({ percent, downloaded: downloadedSize, total: totalSize || 0, speedBytes: speed, etaSeconds: eta });
         }
-      }
-      
-      // Alternative progress format
-      const altMatch = output.match(/(\d+\.\d+)%\s+(\d+\.\d+)(.)iB\s+(\d+\.\d+)(.)iB\/s\s+in\s+(\d+:\d+)/);
-      if (altMatch) {
-        const percent = parseFloat(altMatch[1]);
-        downloadedSize = parseFloat(altMatch[2]);
-        const downloadUnit = `${altMatch[3]}iB`;
-        speed = `${altMatch[4]}${altMatch[5]}iB/s`;
-        
-        // Send progress update immediately
-        progressCallback({
-          percent,
-          downloaded: downloadedSize,
-          total: totalSize || 100, // If total is unknown, use placeholder
-          unit: downloadUnit,
-          speed,
-          eta
-        });
-      }
-      
-      // Add more alternative pattern for recent yt-dlp versions
-      const newFormatMatch = output.match(/(\d+\.\d+)%\s+\[(\w+)\]\s+(\d+\.\d+)(\w+)\s+of\s+~?(\d+\.\d+)(\w+)\s+at\s+(\d+\.\d+)(\w+\/s)\s+ETA\s+(\d+:\d+)/);
-      if (newFormatMatch) {
-        const percent = parseFloat(newFormatMatch[1]);
-        downloadedSize = parseFloat(newFormatMatch[3]);
-        const downloadUnit = newFormatMatch[4];
-        totalSize = parseFloat(newFormatMatch[5]);
-        const totalSizeUnit = newFormatMatch[6];
-        speed = `${newFormatMatch[7]}${newFormatMatch[8]}`;
-        eta = newFormatMatch[9];
-        
-        // Send progress update immediately
-        progressCallback({
-          percent,
-          downloaded: downloadedSize,
-          total: totalSize,
-          unit: totalSizeUnit,
-          speed,
-          eta
-        });
-      }
-      
-      // Extract any progress from merging/muxing operations
-      const mergeMatch = output.match(/(\d+\.\d+)%/);
-      if (mergeMatch && !downloadMatch && !altMatch && !newFormatMatch) {
-        const percent = parseFloat(mergeMatch[1]);
-        
-        // For merging operations, we might not have size information
-        progressCallback({
-          percent,
-          downloaded: downloadedSize || 0,
-          total: totalSize || 100,
-          unit: 'MB',
-          speed: 'Merging...',
-          eta: '...'
-        });
-      }
-      
-      // Check for "already exists" message, which isn't an error
-      if (output.includes("already exists") && output.includes("not overwriting")) {
-        console.log("File already exists - not an error");
-      }
+        if (!matched && /100%/.test(line) && !/ETA/.test(line)) {
+          progressCallback({ percent: 100, downloaded: downloadedSize||totalSize, total: totalSize, speedBytes: speed, etaSeconds: 0 });
+        }
+      });
+      // ...existing code...
     });
 
     ytdlp.stderr.on('data', (data) => {
@@ -1019,10 +1074,11 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
       // Kiểm tra nếu quá trình đã hoàn tất (nhận diện từ output) hoặc code=0
       if (isCompleted || code === 0) {
         console.log('Download completed successfully. Resolving promise...');
-        resolve({
-          success: true,
-          filePath: outputPath
-        });
+        // Emit renderer event for completion
+        if (mainWindow) {
+          mainWindow.webContents.send('download-complete', { filePath: outputPath, url });
+        }
+        resolve({ success: true, filePath: outputPath });
       } else {
         // Parse error message to provide more useful information
         let errorMessage = "Download failed";
@@ -1113,4 +1169,59 @@ async function cleanupAppData() {
       reject(error);
     }
   });
+}
+
+// IPC handler: download-thumbnail
+ipcMain.handle('download-thumbnail', async (event, { url, title }) => {
+  try {
+    const ytdlpPath = store.get('ytdlpPath', 'yt-dlp');
+    // We will fetch metadata quickly to extract best thumbnail if URL provided
+    let thumbnailUrl = null;
+    if (url) {
+      try {
+        const meta = await new Promise((resolve, reject) => {
+          const p = spawn(ytdlpPath, ['--dump-json','--skip-download','--no-warnings', url]);
+          let out=''; let err='';
+          p.stdout.on('data', d=> out += d.toString());
+            p.stderr.on('data', d=> err += d.toString());
+          p.on('close', c=> {
+            if (c===0) {
+              try { resolve(JSON.parse(out)); } catch(e){ reject(e);}  
+            } else reject(new Error(err||'Failed to fetch metadata'));
+          });
+        });
+        if (meta) {
+          if (meta.thumbnails && meta.thumbnails.length) {
+            thumbnailUrl = [...meta.thumbnails].sort((a,b)=> (b.height||0)-(a.height||0))[0].url;
+          } else if (meta.thumbnail) {
+            thumbnailUrl = meta.thumbnail;
+          }
+        }
+      } catch(metaErr) {
+        console.warn('Thumbnail metadata fetch failed, will try direct field:', metaErr.message);
+      }
+    }
+    if (!thumbnailUrl) throw new Error('No thumbnail URL available');
+
+    const saveFolder = store.get('saveFolder', app.getPath('downloads'));
+    const safeTitle = (title||'thumbnail').replace(/[\\\/:*?"<>|]/g,'_').slice(0,100);
+    // Determine extension from URL
+    const extMatch = thumbnailUrl.match(/\.([a-zA-Z0-9]{3,4})(?:$|[?&#])/);
+    const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+    const fileName = `${safeTitle}_thumbnail.${ext}`;
+    const destPath = path.join(saveFolder, fileName);
+
+    const res = await fetch(thumbnailUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const arrayBuf = await res.arrayBuffer();
+    fs.writeFileSync(destPath, Buffer.from(arrayBuf));
+
+    return { success: true, path: destPath };
+  } catch (err) {
+    return { success:false, error: err.message };
+  }
+});
+
+function emitInitialProgress(progressCallback) {
+  progressCallback({ percent: 0, downloaded: 0, total: 0, speedBytes: 0, etaSeconds: 0, initializing: true });
 }

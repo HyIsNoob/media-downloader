@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener(channel, callback);
   },
   removeDownloadProgressListener: () => ipcRenderer.removeAllListeners('download-progress'),
+  onDownloadComplete: (callback) => {
+    const channel = 'download-complete';
+    ipcRenderer.on(channel, (_, data) => callback(data));
+    return () => ipcRenderer.removeListener(channel, callback);
+  },
   
   // Playlist handling
   getPlaylistInfo: (url) => ipcRenderer.invoke('get-playlist-info', url),
@@ -38,6 +43,13 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on(channel, (_, status, info) => callback(status, info));
     return () => ipcRenderer.removeListener(channel, callback);
   },
+  // yt-dlp specific update
+  updateYtDlpNow: () => ipcRenderer.invoke('update-ytdlp-now'),
+  onYtDlpUpdateResult: (callback) => {
+    const channel = 'ytdlp-update-result';
+    ipcRenderer.on(channel, (_, data) => callback(data));
+    return () => ipcRenderer.removeListener(channel, callback);
+  },
   
   // History management
   getHistory: () => ipcRenderer.invoke('get-history'),
@@ -52,5 +64,8 @@ contextBridge.exposeInMainWorld('electron', {
   quitApp: () => ipcRenderer.invoke('quit-app'),
   
   // Debug helpers
-  openDevTools: () => ipcRenderer.invoke('open-dev-tools')
+  openDevTools: () => ipcRenderer.invoke('open-dev-tools'),
+
+  // Thumbnail download
+  downloadThumbnail: (payload) => ipcRenderer.invoke('download-thumbnail', payload),
 });

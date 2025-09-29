@@ -99,6 +99,11 @@
             <div class="flex flex-col md:flex-row">
               <div class="md:w-2/5 relative overflow-hidden">
                 <img id="thumbnail" class="w-full h-full object-cover transform hover:scale-105 transition-transform duration-500" src="" alt="Thumbnail">
+                <div class="absolute top-2 right-2 flex flex-col gap-2">
+                  <button id="downloadThumbnailBtn" class="px-3 py-1 text-xs rounded bg-black/60 hover:bg-black/80 text-white backdrop-blur border border-white/10 transition-colors">
+                    <i class="bi bi-image me-1"></i>Save Thumbnail
+                  </button>
+                </div>
                 <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                   <span id="duration" class="inline-block px-2 py-1 bg-black/60 text-white rounded text-sm"></span>
                 </div>
@@ -129,7 +134,7 @@
             </div>
             <div class="p-6">
               <!-- Format type switcher -->
-              <div class="flex mb-4 bg-secondary-100 dark:bg-secondary-800 p-2 rounded-lg inline-flex">
+              <div class="flex mb-4 bg-secondary-100 dark:bg-secondary-800 p-2 rounded-lg">
                 <button class="px-4 py-2 rounded-md transition-all format-type-btn active" data-format-type="video">
                   <i class="bi bi-camera-video me-2"></i> Video
                 </button>
@@ -307,6 +312,26 @@
                 </label>
                 <p class="text-sm text-secondary-500 dark:text-secondary-400">Automatically check for updates when the app starts</p>
               </div>
+
+              <!-- yt-dlp Auto Update Section -->
+              <div class="space-y-3 border border-secondary-200 dark:border-secondary-700 rounded-lg p-4 bg-secondary-50 dark:bg-secondary-900/40">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium">Tự cập nhật yt-dlp khi khởi động</span>
+                  <input type="checkbox" id="autoUpdateYtDlpOnStart" class="toggle toggle-primary" checked>
+                </div>
+                <p class="text-xs text-secondary-500 dark:text-secondary-400">Luôn cố gắng cập nhật yt-dlp lên bản mới nhất (nightly hoặc stable) để bắt kịp thay đổi nền tảng như TikTok.</p>
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mt-2">
+                  <div id="ytDlpVersionInfo" class="text-sm text-secondary-600 dark:text-secondary-300 bg-secondary-100 dark:bg-secondary-800 px-3 py-2 rounded">
+                    Phiên bản hiện tại: <span id="ytDlpCurrentVersion">...</span>
+                    <span class="ml-1 text-secondary-400" id="ytDlpLastUpdated"></span>
+                  </div>
+                  <div class="flex gap-2">
+                    <button id="updateYtDlpNowBtn" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors btn-animate">
+                      <i class="bi bi-arrow-repeat me-1"></i> Cập nhật ngay
+                    </button>
+                  </div>
+                </div>
+              </div>
               
               <div class="flex flex-wrap gap-2">
                 <button id="checkUpdateBtn" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors btn-animate">
@@ -334,6 +359,39 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Download Completion Modal -->
+  <div id="downloadCompleteModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" data-modal-close></div>
+    <div class="relative w-full max-w-md mx-4 glass-card border border-secondary-200 dark:border-secondary-700 animate-slide-up">
+      <div class="p-5 border-b border-secondary-200 dark:border-secondary-700 flex items-center justify-between">
+        <h3 class="text-lg font-semibold flex items-center gap-2"><i class="bi bi-check2-circle text-primary-500 text-xl"></i> Download Complete</h3>
+        <button class="text-secondary-500 hover:text-secondary-700 dark:hover:text-secondary-200" data-modal-close>
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div>
+          <p class="text-sm text-secondary-600 dark:text-secondary-300">File:</p>
+          <p id="dc-file-name" class="font-medium break-all"></p>
+        </div>
+        <div id="dc-actions" class="grid grid-cols-2 gap-3">
+          <button id="dc-open-file" class="btn-primary-gradient py-2 rounded-md flex items-center justify-center gap-1 text-sm">
+            <i class="bi bi-play-fill"></i> Open File
+          </button>
+          <button id="dc-open-folder" class="bg-secondary-200 dark:bg-secondary-800 hover:bg-secondary-300 dark:hover:bg-secondary-700 transition-colors rounded-md py-2 flex items-center justify-center gap-1 text-sm">
+            <i class="bi bi-folder2-open"></i> Open Folder
+          </button>
+          <button id="dc-copy-path" class="bg-secondary-200 dark:bg-secondary-800 hover:bg-secondary-300 dark:hover:bg-secondary-700 transition-colors rounded-md py-2 flex items-center justify-center gap-1 text-sm">
+            <i class="bi bi-clipboard"></i> Copy Path
+          </button>
+          <button id="dc-close" data-modal-close class="bg-secondary-200 dark:bg-secondary-800 hover:bg-secondary-300 dark:hover:bg-secondary-700 transition-colors rounded-md py-2 flex items-center justify-center gap-1 text-sm">
+            <i class="bi bi-x-circle"></i> Close
+          </button>
         </div>
       </div>
     </div>

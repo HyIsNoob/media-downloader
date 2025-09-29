@@ -18,6 +18,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Make functions globally accessible after they're defined
   window.showDownloadProgress = showDownloadProgress;
   window.hideDownloadProgress = hideDownloadProgress;
+
+  // Listen for completion event to prompt open folder
+  if (window.electron && window.electron.onDownloadComplete) {
+    window.electron.onDownloadComplete(({ filePath }) => {
+      if (!filePath) return;
+      NotificationManager.success('Download completed successfully!');
+      // Show modal instead of confirm
+      setTimeout(() => {
+        showDownloadCompleteModal(filePath);
+      }, 200);
+    });
+  }
 });
 
 // Set up download button and folder selection
@@ -158,32 +170,34 @@ function hideDownloadProgress() {
 
 // Update download progress UI
 function updateDownloadProgress(progress) {
-  // Update progress bar
   const progressBar = document.getElementById('progressBar');
-  progressBar.style.width = `${progress.percent || 0}%`;
-  
-  // Update download speed
+  const pct = typeof progress.percent === 'number' ? progress.percent : 0;
+  progressBar.style.width = pct + '%';
+  progressBar.setAttribute('aria-valuenow', pct.toFixed(2));
+
+  // Numbers
   const downloadSpeed = document.getElementById('downloadSpeed');
-  downloadSpeed.textContent = formatSpeed(progress.speed);
-  
-  // Update downloaded size
+  if (typeof progress.speedBytes === 'number' && progress.speedBytes > 0) {
+    downloadSpeed.textContent = formatSpeed(progress.speedBytes);
+  } else if (progress.speed) { // legacy field fallback
+    downloadSpeed.textContent = progress.speed;
+  }
+
   const downloadedSize = document.getElementById('downloadedSize');
-  downloadedSize.textContent = formatFileSize(progress.downloaded);
-  
-  // Update total size
+  downloadedSize.textContent = formatFileSize(progress.downloaded || 0);
+
   const totalSize = document.getElementById('totalSize');
-  totalSize.textContent = formatFileSize(progress.total);
-  
-  // Update ETA
+  totalSize.textContent = progress.total ? formatFileSize(progress.total) : '—';
+
   const eta = document.getElementById('eta');
-  eta.textContent = formatETA(progress.eta);
-  
-  // Add animation to progress bar
-  gsap.to(progressBar, {
-    width: `${progress.percent || 0}%`,
-    duration: 0.3,
-    ease: "power1.out"
-  });
+  if (typeof progress.etaSeconds === 'number' && progress.etaSeconds > 0) {
+    eta.textContent = formatETA(progress.etaSeconds);
+  } else if (progress.eta) {
+    eta.textContent = progress.eta;
+  }
+
+  // Animate
+  gsap.to(progressBar, { width: pct + '%', duration: 0.25, ease: 'power1.out' });
 }
 
 // Update save folder display
@@ -194,6 +208,45 @@ async function updateSaveFolderDisplay() {
   } catch (error) {
     console.error('Error getting save folder:', error);
   }
+}
+
+// Modal helpers
+function showDownloadCompleteModal(filePath) {
+  const modal = document.getElementById('downloadCompleteModal');
+  if (!modal) return;
+  const fileNameEl = document.getElementById('dc-file-name');
+  fileNameEl.textContent = filePath.split(/[/\\]/).pop();
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  gsap.fromTo(modal.querySelector('.glass-card'), { y: 40, opacity: 0 }, { y:0, opacity:1, duration:0.35, ease:'power2.out' });
+
+  // Wire buttons
+  const openFileBtn = document.getElementById('dc-open-file');
+  const openFolderBtn = document.getElementById('dc-open-folder');
+  const copyPathBtn = document.getElementById('dc-copy-path');
+  const closeBtns = modal.querySelectorAll('[data-modal-close]');
+
+  openFileBtn.onclick = () => window.electron.openFile(filePath);
+  openFolderBtn.onclick = () => {
+    const folderPath = filePath.substring(0, filePath.lastIndexOf(/[/\\]/.test(filePath) ? filePath.match(/[/\\](?!.*[/\\])/).index : filePath.length));
+    window.electron.openFolder(folderPath || filePath);
+  };
+  copyPathBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(filePath);
+      NotificationManager.success('Path copied');
+    } catch { NotificationManager.error('Copy failed'); }
+  };
+  closeBtns.forEach(btn => btn.onclick = () => hideDownloadCompleteModal());
+}
+
+function hideDownloadCompleteModal() {
+  const modal = document.getElementById('downloadCompleteModal');
+  if (!modal) return;
+  gsap.to(modal.querySelector('.glass-card'), { y:30, opacity:0, duration:0.25, ease:'power2.in', onComplete: () => {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }});
 }
 
 // Helper functions
@@ -230,4 +283,4 @@ function formatETA(seconds) {
 // export {
 //   showDownloadProgress,
 //   hideDownloadProgress
-// }; 
+// };

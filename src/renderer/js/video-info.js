@@ -105,6 +105,33 @@ document.addEventListener('DOMContentLoaded', () => {
   // Make variables and functions globally accessible after they're defined
   window.currentVideoInfo = currentVideoInfo;
   window.getSelectedFormat = getSelectedFormat;
+  
+  // After DOMContentLoaded handler or within it, attach thumbnail button listener
+  const thumbBtn = document.getElementById('downloadThumbnailBtn');
+  if (thumbBtn) {
+    thumbBtn.addEventListener('click', async () => {
+      try {
+        if (!currentVideoInfo) return NotificationManager.error('No video loaded');
+        thumbBtn.disabled = true;
+        const original = thumbBtn.innerHTML;
+        thumbBtn.innerHTML = '<i class="bi bi-arrow-repeat animate-spin me-1"></i>Saving';
+        const result = await window.electron.downloadThumbnail({
+          url: currentVideoInfo.webpage_url || currentVideoInfo.url,
+          title: currentVideoInfo.title
+        });
+        if (result.success) {
+          NotificationManager.success('Thumbnail saved');
+        } else {
+          NotificationManager.error('Save failed: ' + result.error);
+        }
+        thumbBtn.innerHTML = original;
+        thumbBtn.disabled = false;
+      } catch (e) {
+        console.error(e);
+        NotificationManager.error('Error saving thumbnail');
+      }
+    });
+  }
 });
 
 // Set up event listeners for the video info section
@@ -239,7 +266,7 @@ function displayVideoInfo(info) {
   document.getElementById('channelName').textContent = channelName;
   
   // Format duration with better fallback
-  let duration = 'Unknown duration';
+  let duration = '—';
   if (info.duration) {
     duration = formatDuration(info.duration);
   } else if (info.duration_string) {
@@ -253,24 +280,13 @@ function displayVideoInfo(info) {
   }
   document.getElementById('duration').textContent = duration;
   
-  // Format date with more options and better parsing
-  let uploadDate = 'Unknown date';
-  const dateFields = ['upload_date', 'release_date', 'release_timestamp', 'timestamp', 'modified_date'];
+  // Improved date resolution logic
+  const uploadDateEl = document.getElementById('uploadDate');
+  uploadDateEl.textContent = resolveUploadDate(info) || '—';
   
-  for (const field of dateFields) {
-    if (info[field]) {
-      const formattedDate = formatDate(info[field]);
-      if (formattedDate) {
-        uploadDate = formattedDate;
-        break;
-      }
-    }
-  }
-  document.getElementById('uploadDate').textContent = uploadDate;
-  
-  // Format view count with better fallback
-  const viewCount = formatViewCount(info.view_count || info.views || info.play_count || 0);
-  document.getElementById('viewCount').textContent = viewCount;
+  // Improved view count formatting
+  const viewsEl = document.getElementById('viewCount');
+  viewsEl.textContent = resolveViewCount(info) || '—';
   
   // Handle description with fallback and better formatting
   const description = info.description || info.summary || info.synopsis || 
@@ -312,6 +328,42 @@ function displayVideoInfo(info) {
     { opacity: 0, y: 20 },
     { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }
   );
+}
+
+// New helper: resolve upload date with multiple fallbacks
+function resolveUploadDate(info) {
+  const fields = [
+    'upload_date','release_date','release_timestamp','timestamp','modified_date','created_date'
+  ];
+  for (const key of fields) {
+    if (info[key]) {
+      const formatted = formatDate(info[key]);
+      if (formatted) return formatted;
+    }
+  }
+  // Sometimes date available inside formats metadata
+  if (info.formats) {
+    for (const f of info.formats) {
+      if (f.upload_date) {
+        const formatted = formatDate(f.upload_date);
+        if (formatted) return formatted;
+      }
+    }
+  }
+  return null;
+}
+
+// New helper: resolve view count with multiple sources
+function resolveViewCount(info) {
+  const candidates = [info.view_count, info.views, info.play_count, info.viewCount, info.statistics?.viewCount];
+  for (const v of candidates) {
+    if (typeof v === 'number' && v >= 0) return formatViewCount(v);
+    if (typeof v === 'string' && /\d/.test(v)) {
+      const num = parseInt(v.replace(/[^0-9]/g,''),10);
+      if (!isNaN(num)) return formatViewCount(num);
+    }
+  }
+  return null;
 }
 
 // Helper function to get the best thumbnail URL
@@ -366,12 +418,20 @@ function displayFormatOptions(formats) {
   // Create standard video resolutions list
   const standardVideoFormats = [];
   
-  // First add the best quality option
+  // First add the best quality option (virtual entries)
   standardVideoFormats.push({
-    formatId: 'best',
-    formatNote: 'Best Quality',
-    height: 9999, // Set highest for sorting
+    formatId: 'best-mp4',
+    formatNote: 'Best (MP4)',
+    height: 9999,
     ext: 'mp4',
+    vcodec: 'auto',
+    filesize: null
+  });
+  standardVideoFormats.push({
+    formatId: 'best-any',
+    formatNote: 'Best (Any Codec)',
+    height: 9998,
+    ext: 'auto',
     vcodec: 'auto',
     filesize: null
   });
@@ -589,20 +649,33 @@ function formatDuration(seconds) {
   }
 }
 
-function formatDate(dateString) {
-  if (!dateString) return 'Unknown';
-  
-  try {
-    // Convert YYYYMMDD to YYYY-MM-DD
-    const year = dateString.substring(0, 4);
-    const month = dateString.substring(4, 6);
-    const day = dateString.substring(6, 8);
-    
-    const date = new Date(`${year}-${month}-${day}`);
-    return date.toLocaleDateString();
-  } catch (e) {
-    return dateString;
+function formatDate(raw) {
+  if (!raw) return null;
+  // If numeric
+  if (typeof raw === 'number') {
+    // Assume seconds if 10 digits, ms if 13
+    if (raw < 1e12) return new Date(raw * 1000).toLocaleDateString();
+    return new Date(raw).toLocaleDateString();
   }
+  if (typeof raw === 'string') {
+    // pure digits YYYYMMDD
+    if (/^\d{8}$/.test(raw)) {
+      const year = raw.slice(0,4); const month = raw.slice(4,6); const day = raw.slice(6,8);
+      return new Date(`${year}-${month}-${day}T00:00:00Z`).toLocaleDateString();
+    }
+    // ISO or yyyy-mm-dd
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw) || raw.includes('T')) {
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString();
+    }
+    // numeric string timestamp
+    if (/^\d{10,13}$/.test(raw)) {
+      const num = parseInt(raw,10);
+      if (num < 1e12) return new Date(num * 1000).toLocaleDateString();
+      return new Date(num).toLocaleDateString();
+    }
+  }
+  return null;
 }
 
 function formatViewCount(viewCount) {
@@ -656,4 +729,4 @@ function isValidURL(url) {
 //   currentVideoInfo,
 //   getSelectedFormat,
 //   resetVideoInfo
-// }; 
+// };
