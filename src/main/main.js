@@ -413,7 +413,8 @@ ipcMain.handle('get-settings', () => {
     lastYtDlpVersion: store.get('lastYtDlpVersion', null),
     lastYtDlpUpdateTime: store.get('lastYtDlpUpdateTime', null),
     appVersion: app.getVersion(),
-    ultraRemuxMp4: store.get('ultraRemuxMp4', false)
+    ultraRemuxMp4: store.get('ultraRemuxMp4', false),
+    preferModernCodecs: store.get('preferModernCodecs', true)
   };
 });
 
@@ -457,6 +458,7 @@ ipcMain.handle('save-settings', (event, settings) => {
   if (settings.skipVersion !== undefined) 
     store.set('skipVersion', settings.skipVersion);
   if (typeof settings.ultraRemuxMp4 !== 'undefined') store.set('ultraRemuxMp4', settings.ultraRemuxMp4);
+  if (typeof settings.preferModernCodecs !== 'undefined') store.set('preferModernCodecs', settings.preferModernCodecs);
   
   return true;
 });
@@ -899,6 +901,7 @@ async function getPlaylistInfo(url) {
 async function downloadVideo(url, format, isAudio, outputPath, progressCallback) {
   emitInitialProgress(progressCallback);
   const ultraRemux = store.get('ultraRemuxMp4', false);
+  const preferModern = store.get('preferModernCodecs', true);
   return new Promise((resolve, reject) => {
     // Get yt-dlp path from settings
     const ytdlpPath = store.get('ytdlpPath', 'yt-dlp');
@@ -940,44 +943,71 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
         console.log(`Using specific audio format: ${format} and converting to MP3`);
       }
     } else {
-      // Video download logic - simplified based on our custom format IDs
-      if (format === 'best-any') {
-        if (ultraRemux) {
-          console.log('Ultra remux enabled: bestvideo+bestaudio -> mp4');
-          args.push('-f','bestvideo+bestaudio/best');
-          args.push('--merge-output-format','mp4');
-        } else {
-          console.log('Best any codec without forced remux');
-          args.push('-f','bestvideo+bestaudio/best');
-        }
+      // Video download logic with modern codec preference
+      const forceMp4 = ultraRemux || format === 'best-mp4' || format === 'best' || (format && format.startsWith('res-') && ultraRemux);
+      const isResolution = format && format.startsWith('res-');
+      const resolution = isResolution ? parseInt(format.replace('res-','')) : null;
+
+      function buildModernSelector(limitHeight) {
+        const heightFilter = limitHeight ? `[height<=${limitHeight}]` : '';
+        // Prioritize av01 then vp9 then h264
+        return `bestvideo[vcodec^=av01]${heightFilter}/bestvideo[vcodec*=vp9]${heightFilter}/bestvideo[vcodec*=h264]${heightFilter}/bestvideo${heightFilter}`;
+      }
+
+      if (format === 'ultra-remux') {
+        console.log('Explicit ultra-remux selection');
+        args.push('-f','bestvideo+bestaudio/best');
+        args.push('--merge-output-format','mp4');
       } else if (format === 'best-mp4' || format === 'best') {
         console.log('Selecting best MP4 quality (may remux)');
         args.push('-f','bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best');
         args.push('--merge-output-format','mp4');
-      } else if (format === 'ultra-remux') {
-        console.log('Explicit ultra-remux selection');
+      } else if (format === 'best-any') {
+        if (forceMp4) {
+          console.log('best-any but Ultra forces mp4 remux');
           args.push('-f','bestvideo+bestaudio/best');
           args.push('--merge-output-format','mp4');
-      } else if (format && format.startsWith('res-')) {
-        const resolution = parseInt(format.replace('res-',''));
-        if (!isNaN(resolution)) {
-          console.log(`Downloading video at ${resolution}p with audio (codec agnostic)`);
-          args.push('-f',`bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`);
-          // Remux only if ultraRemux or user chose mp4-specific resolution? We'll always remux for consistency.
-          args.push('--merge-output-format','mp4');
+        } else if (preferModern) {
+          console.log('Prefer modern codecs (AV1/VP9) merging to MKV if needed');
+          const selector = buildModernSelector();
+          args.push('-f',`${selector}+bestaudio/best`);
+          // Only specify mkv if container mismatch likely; safe default
+          args.push('--merge-output-format','mkv');
         } else {
-          console.log('Resolution parsing failed, using fallback best-any');
+          console.log('Standard best-any without modern preference');
+          args.push('-f','bestvideo+bestaudio/best');
+        }
+      } else if (isResolution) {
+        if (!isNaN(resolution)) {
+          if (preferModern && !ultraRemux) {
+            console.log(`Resolution-limited modern codec selection up to ${resolution}p`);
+            const selector = buildModernSelector(resolution);
+            args.push('-f',`${selector}+bestaudio/best[height<=${resolution}]`);
+            args.push('--merge-output-format','mkv');
+          } else {
+            console.log(`Resolution-limited selection up to ${resolution}p (MP4 remux=${forceMp4})`);
+            args.push('-f',`bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`);
+            if (forceMp4) args.push('--merge-output-format','mp4');
+          }
+        } else {
+          console.log('Resolution parsing failed, fallback best-any');
+          args.push('-f','bestvideo+bestaudio/best');
+          if (forceMp4) args.push('--merge-output-format','mp4');
+        }
+      } else if (format && !isNaN(parseInt(format))) {
+        console.log(`Using specific format ID: ${format} + merging with best audio (mp4 remux=${forceMp4})`);
+        args.push('-f',`${format}+bestaudio/best`);
+        if (forceMp4) args.push('--merge-output-format','mp4'); else if (preferModern) args.push('--merge-output-format','mkv');
+      } else {
+        console.log('Defaulting to best-any selector');
+        if (preferModern && !ultraRemux) {
+          const selector = buildModernSelector();
+          args.push('-f',`${selector}+bestaudio/best`);
+          args.push('--merge-output-format','mkv');
+        } else {
           args.push('-f','bestvideo+bestaudio/best');
           if (ultraRemux) args.push('--merge-output-format','mp4');
         }
-      } else if (format && !isNaN(parseInt(format))) {
-        console.log(`Using specific format ID: ${format} + merging with best audio`);
-        args.push('-f',`${format}+bestaudio/best`);
-        args.push('--merge-output-format','mp4');
-      } else {
-        console.log('Defaulting to best-any selector');
-        args.push('-f','bestvideo+bestaudio/best');
-        if (ultraRemux) args.push('--merge-output-format','mp4');
       }
     }
     

@@ -2,6 +2,48 @@
 
 A modern, cross-platform desktop application for downloading videos and audio from various platforms like YouTube, Facebook, and TikTok.
 
+## 🚀 What's New in v1.2.0 (Quality & Ultra Remux Update)
+
+| Feature | Description |
+|---------|-------------|
+| Prefer Modern Codecs (AV1/VP9) | NEW toggle (mặc định bật) ưu tiên AV1/VP9 + Opus, merge sang MKV nếu cần để đạt chất lượng/bitrate tối ưu. |
+| Ultra Remux MP4 | Ép bestvideo+bestaudio remux sang MP4 để tương thích tối đa (có thể lớn hơn / bỏ lỡ codec mới). |
+| Dual Best Modes | “Best (Any Codec)” vs “Best (MP4)” cho phép chọn giữa chất lượng tối đa và tương thích. |
+| Smarter Progress Parser | Bắt được nhiều kiểu output yt-dlp (carriage return, inline cập nhật) → không còn 0 KB/s giả. |
+| Metadata Fallbacks | Ngày & lượt xem lấy từ nhiều trường (timestamp, ISO, upload_date, release_date...). |
+| Save Thumbnail | Nút lưu thumbnail độ phân giải cao ngay trong khung thông tin video. |
+| Completion Modal | Giao diện hoàn tất tải với nút Open File / Folder / Copy Path. |
+| Tooltips Giải Thích | Icon “?” trong Settings giải thích khi nào bật Ultra vs Prefer Modern. |
+
+### 🔧 Chọn chế độ nào?
+
+- Muốn chất lượng tối đa / codec mới / file nhỏ hơn mà vẫn nét: Bật Prefer Modern (mặc định), tắt Ultra Remux.
+- Muốn đảm bảo mở được ở TV / đầu phát / phần mềm cũ chỉ hỗ trợ MP4: Bật Ultra Remux.
+- Không chắc: Giữ mặc định (Prefer Modern ON, Ultra OFF) → cân bằng tốt nhất.
+
+### 🎥 Quality Modes Logic
+
+| Mode | Hành vi | Container ưu tiên | Khi nào dùng |
+|------|---------|-------------------|--------------|
+| Best (Any Codec) + Prefer Modern ON | Ưu tiên av01 > vp9 > h264 + Opus | MKV/WebM (merge MKV nếu mismatch) | Chất lượng & hiệu suất nén tối đa |
+| Best (Any Codec) + Ultra ON | bestvideo+bestaudio remux MP4 | MP4 | MP4 bắt buộc nhưng vẫn chọn track tốt nhất |
+| Best (MP4) | Chỉ xét track MP4 trước rồi fallback | MP4 | Thiết bị cần MP4 + không bật Ultra |
+| Resolution (res-XXX) | Giới hạn độ cao; nếu Prefer Modern ON vẫn ưu tiên AV1/VP9 | MKV hoặc MP4 (nếu Ultra) | Khi bạn chỉ muốn 720p/1080p... |
+
+### 🧠 Quy tắc nội bộ
+
+- Prefer Modern bật → thêm selector ưu tiên `av01 / vp9 / h264` và merge MKV khi cần.
+- Ultra Remux bật → luôn thêm `--merge-output-format mp4`.
+- Xung đột: Ultra > Prefer Modern (Prefer Modern bị disable tạm thời UI).
+
+### ⚠️ Lưu ý
+
+- AV1 có thể chậm hơn trên máy cũ (CPU decode). Nếu lag khi phát → tắt Prefer Modern hoặc dùng Best (MP4).
+- MKV an toàn chứa nhiều codec – hầu hết trình phát hiện đại hỗ trợ.
+- Không transcode: chỉ remux (nhanh, không mất chất lượng).
+
+---
+
 ![image](https://github.com/user-attachments/assets/7bc3dd8a-648b-4471-b1b6-ab70121e6c0f)
 
 ## 🆕 What's New in v1.1.0
@@ -37,36 +79,44 @@ See the [CHANGELOG.md](CHANGELOG.md) for complete details.
 ## 📥 Installation
 
 1. Clone this repository
-2. Install dependencies:
-   ```
-   npm install
-   ```
-3. Make sure yt-dlp is installed and available in your PATH
-4. Run the setup script to configure the new UI:
-   ```
-   node setup-new-ui.js
-   ```
-5. Run the app:
-   ```
-   npm start
-   ```
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+1. Make sure yt-dlp is installed and available in your PATH
+1. Run the setup script to configure the new UI:
+
+```bash
+node setup-new-ui.js
+```
+
+1. Run the app:
+
+```bash
+npm start
+```
 
 ## 💻 Development
 
 To run the app in development mode with hot reload:
-```
+
+```bash
 npm run dev
 ```
 
 ## 🏗️ Build
 
 To build the app for your platform:
-```
+
+```bash
 npm run build
 ```
 
 For specific platforms:
-```
+
+```bash
 npm run build:win   # Windows
 npm run build:mac   # macOS
 npm run build:linux # Linux

@@ -15,6 +15,7 @@ Phiên bản 1.2.0 tập trung vào hai nhóm mục tiêu chính: (1) đảm b�
 - Tuỳ chọn chất lượng: Best (Any Codec) & Best (MP4) song song.
 - Nút Save Thumbnail độ phân giải cao.
 - Completion modal (Open File / Open Folder / Copy Path).
+- Prefer Modern Codecs (AV1/VP9) toggle (mặc định bật) – ưu tiên AV1/VP9 + Opus, merge sang MKV khi cần.
 
 ### Improved
 
@@ -23,6 +24,7 @@ Phiên bản 1.2.0 tập trung vào hai nhóm mục tiêu chính: (1) đảm b�
 - Fallback metadata ngày & lượt xem (timestamp, iso, release_date, upload_date…).
 - Chọn độ phân giải không còn khóa cứng vào MP4 – remux sau nếu cần.
 - Date parsing nhận diện epoch numeric, ISO, YYYYMMDD.
+- Tooltip giải thích nên dùng Ultra Remux hay Prefer Modern Codecs trong Settings.
 
 ### Fixed
 
@@ -39,6 +41,7 @@ Phiên bản 1.2.0 tập trung vào hai nhóm mục tiêu chính: (1) đảm b�
 
 - Bật nếu cần MP4 tương thích rộng và chất lượng tối đa (có thể lớn hơn do remux/copy từ webm/av1).
 - Tắt nếu muốn giữ nguyên codec/container gốc (AV1/VP9 + Opus) và không cần MP4.
+- Prefer Modern Codecs (ON) + Ultra (OFF) = cân bằng tốt nhất cho chất lượng/size.
 
 ## Upgrade Notes
 

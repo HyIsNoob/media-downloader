@@ -2534,6 +2534,10 @@ body:is(.dark *) {
   margin-top: 1rem;
 }
 
+.mt-6 {
+  margin-top: 1.5rem;
+}
+
 .mt-auto {
   margin-top: auto;
 }
@@ -3356,6 +3360,11 @@ body:is(.dark *) {
 
 .hover\:bg-warning\/80:hover {
   background-color: var(--fallback-wa,oklch(var(--wa)/0.8));
+}
+
+.hover\:text-primary-500:hover {
+  --tw-text-opacity: 1;
+  color: rgb(99 102 241 / var(--tw-text-opacity, 1));
 }
 
 .hover\:text-secondary-700:hover {

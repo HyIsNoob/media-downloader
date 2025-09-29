@@ -11,6 +11,7 @@ All notable changes to Media Downloader will be documented in this file.
 - Best (Any Codec) & Best (MP4) song song – cho phép chọn linh hoạt giữa chất lượng tối đa và tương thích.
 - Nút lưu Thumbnail chất lượng cao ngay trong giao diện thông tin video.
 - Completion modal hiện đại với các nút Open File / Open Folder / Copy Path.
+- Prefer Modern Codecs (AV1/VP9) toggle (mặc định bật) – ưu tiên codec mới + Opus và merge sang MKV khi cần.
 
 ### Improved
 
@@ -19,6 +20,7 @@ All notable changes to Media Downloader will be documented in this file.
 - Hiển thị tiến trình tải: parser mới đọc được nhiều kiểu output (\r cập nhật inline, iB/MiB pattern) -> tốc độ & ETA không còn bị 0.
 - Chọn độ phân giải res-X không còn giới hạn ext=mp4; vẫn remux nếu cần để giữ chất lượng.
 - Cải thiện nhận diện bitrate tổng hợp (tbr) cho so sánh chất lượng giữa các tuỳ chọn.
+- Thêm tooltip giải thích khi nào nên bật Ultra Remux hay Prefer Modern Codecs.
 
 ### Fixed
 
@@ -100,5 +102,5 @@ All notable changes to Media Downloader will be documented in this file.
 
 - Initial release
 - Basic downloader functionality
- - Basic downloader functionality
+- Basic downloader functionality
 

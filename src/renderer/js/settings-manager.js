@@ -376,7 +376,10 @@ function setupSettingsPage() {
 }
 
 // Render additional settings UI elements
-function renderSettings(settings) {
+async function renderSettings(settings) {
+  if (!settings) {
+    try { settings = await window.electron.getSettings(); } catch { settings = { ultraRemuxMp4:false, preferModernCodecs:true }; }
+  }
   // Render advanced settings section if not already rendered
   const advancedContainer = document.getElementById('advancedSettingsExtra');
   if (advancedContainer && !document.getElementById('ultraRemuxToggle')) {
@@ -384,7 +387,7 @@ function renderSettings(settings) {
     row.className = 'flex items-center justify-between mt-3';
     row.innerHTML = `
       <div>
-        <div class="font-medium">Ultra Remux MP4</div>
+        <div class="font-medium flex items-center gap-2">Ultra Remux MP4 <i class="bi bi-question-circle text-secondary-500 hover:text-primary-500 transition-colors cursor-pointer" data-tippy-content="Đảm bảo file MP4 tương thích rộng. Dễ phát trên thiết bị cũ nhưng có thể bỏ lỡ codec mới (AV1/VP9). Bật nếu bạn cần MP4 chắc chắn chạy ở mọi nơi."></i></div>
         <div class="text-xs text-secondary-500 dark:text-secondary-400">Always remux best video+audio to MP4 (largest possible)</div>
       </div>
       <label class="inline-flex items-center cursor-pointer">
@@ -398,6 +401,46 @@ function renderSettings(settings) {
       s.ultraRemuxMp4 = toggle.checked;
       await window.electron.saveSettings(s);
       NotificationManager.info('Ultra Remux setting saved');
+      // When Ultra toggled, update modern codecs toggle disabled state
+      const modern = document.getElementById('preferModernCodecsToggle');
+      if (modern) {
+        if (toggle.checked) {
+          modern.setAttribute('disabled','disabled');
+          modern.parentElement.classList.add('opacity-50');
+        } else {
+          modern.removeAttribute('disabled');
+          modern.parentElement.classList.remove('opacity-50');
+        }
+      }
     });
+    // Add Prefer Modern Codecs row
+    const modernRow = document.createElement('div');
+    modernRow.className = 'flex items-center justify-between mt-3';
+    const prefer = settings.preferModernCodecs !== false; // default true
+    const disabledState = settings.ultraRemuxMp4 ? 'disabled' : '';
+    const opacity = settings.ultraRemuxMp4 ? 'opacity-50' : '';
+    modernRow.innerHTML = `
+      <div>
+        <div class="font-medium flex items-center gap-2">Prefer Modern Codecs (AV1/VP9) <i class="bi bi-question-circle text-secondary-500 hover:text-primary-500 transition-colors cursor-pointer" data-tippy-content="Ưu tiên AV1/VP9+Opus để có chất lượng cao hơn trên cùng dung lượng. Tự merge sang MKV nếu cần. Bật khi muốn tối ưu chất lượng / bitrate. Tắt nếu bạn chỉ muốn MP4."></i></div>
+        <div class="text-xs text-secondary-500 dark:text-secondary-400">Select AV1/VP9 + Opus and merge to MKV when possible</div>
+      </div>
+      <label class="inline-flex items-center cursor-pointer ${opacity}">
+        <input id="preferModernCodecsToggle" type="checkbox" class="sr-only peer" ${prefer ? 'checked':''} ${disabledState}>
+        <div class="w-11 h-6 bg-secondary-300 peer-focus:outline-none rounded-full peer dark:bg-secondary-700 peer-checked:bg-primary-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+      </label>`;
+    advancedContainer.appendChild(modernRow);
+    const modernToggle = modernRow.querySelector('#preferModernCodecsToggle');
+    modernToggle.addEventListener('change', async () => {
+      const s = await window.electron.getSettings();
+      s.preferModernCodecs = modernToggle.checked;
+      await window.electron.saveSettings(s);
+      NotificationManager.info('Modern codec preference saved');
+    });
+
+    // Initialize tippy for new icons
+    if (window.tippy) {
+      tippy(row.querySelectorAll('[data-tippy-content]'));
+      tippy(modernRow.querySelectorAll('[data-tippy-content]'));
+    }
   }
 }
