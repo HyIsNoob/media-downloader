@@ -3,6 +3,30 @@
 
 All notable changes to Media Downloader will be documented in this file.
 
+## [1.3.0] - 2026-02-06
+
+### Added
+
+- **Download Queue**: Hàng đợi tải với Pause, Resume, Cancel. Tab Queue quản lý danh sách, nút Pause/Resume toàn bộ, Cancel hoặc Remove từng item.
+- **Add to queue**: Trang Home có nút "Add to queue" bên cạnh Download; Playlist có nút Queue từng video và "Add selected to queue".
+- **Pause/Cancel khi tải đơn (Home)**: Trong lúc tải từ Home, có nút "Pause (add to queue)" và "Cancel" ngay trên card tiến trình.
+
+### Improved
+
+- **YouTube Playlist**: Tải toàn bộ/đã chọn với chất lượng giống tải đơn (best-mp4, res-720, audio-320...), lưu vào thư mục con theo tên playlist, tên file dạng `01 - Title.mp4`.
+- **UI/UX**: Trang Home (ô URL + nút Get Info) layout ổn định; empty states Queue/History rõ ràng; queue status badge màu (Pending, Downloading, Paused, Done, Failed); focus accessibility; nút bấm có feedback.
+- **Placeholder/thumbnail**: Dùng placeholder SVG inline, không phụ thuộc file; fallback YouTube hqdefault khi maxresdefault 404; sửa lỗi trùng khai báo PLACEHOLDER_IMAGE.
+- **Clipboard**: Không log NotAllowedError khi document không focus.
+- **Open Folder**: Nút "Open Folder" sau khi tải xong gọi đúng API, mở đúng thư mục chứa file.
+- **Auto update yt-dlp**: Kiểm tra và cập nhật yt-dlp khi mở app (theo setting).
+
+### Fixed
+
+- ReferenceError `originalButtonText` / `originalText` (scope trong try/finally) ở video-info.js và playlist-handler.js.
+- Lỗi placeholder.png ERR_FILE_NOT_FOUND (dùng data URI và window.PLACEHOLDER_IMAGE).
+
+---
+
 ## [1.2.0] - 2025-09-29
 
 ### Added

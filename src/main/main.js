@@ -43,6 +43,84 @@ let updateCheckInterval;
 // Track active download processes
 let activeProcesses = [];
 
+// Download queue: pending -> downloading -> completed | failed | paused | cancelled
+const downloadQueue = [];
+let queuePaused = false;
+let currentDownloadJobId = null;
+let cancelledJobId = null;
+const currentProcessRef = { current: null };
+
+// Single (non-queue) download: for cancel from Home
+const currentSingleProcessRef = { current: null };
+let currentSingleCancelled = false;
+
+function generateId() {
+  return `q_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function sendQueueUpdate() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('queue-update', JSON.parse(JSON.stringify(downloadQueue)));
+  }
+}
+
+function processNextInQueue() {
+  if (queuePaused) return;
+  const job = downloadQueue.find(j => j.status === 'pending');
+  if (!job) {
+    currentDownloadJobId = null;
+    sendQueueUpdate();
+    return;
+  }
+  job.status = 'downloading';
+  job.progress = { percent: 0, downloaded: 0, total: 0, speedBytes: 0, etaSeconds: 0 };
+  job.error = null;
+  currentDownloadJobId = job.id;
+  cancelledJobId = null;
+  sendQueueUpdate();
+
+  const progressCallback = (p) => {
+    job.progress = p;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('queue-item-progress', { jobId: job.id, progress: p });
+    }
+    sendQueueUpdate();
+  };
+
+  downloadVideo(job.url, job.format, job.isAudio, job.outputPath, progressCallback, {
+    processRef: currentProcessRef,
+    jobId: job.id
+  })
+    .then((result) => {
+      job.status = 'completed';
+      job.outputPath = result.filePath;
+      job.progress = { percent: 100 };
+      currentDownloadJobId = null;
+      currentProcessRef.current = null;
+      sendQueueUpdate();
+      historyStore.set('downloads', [
+        { title: job.title, url: job.url, thumbnail: job.thumbnail, outputPath: result.filePath, quality: job.qualityLabel || (job.isAudio ? 'Audio' : 'Video'), isAudio: job.isAudio, downloadedAt: new Date().toISOString() },
+        ...(historyStore.get('downloads', []))
+      ]);
+      processNextInQueue();
+    })
+    .catch((err) => {
+      if (cancelledJobId === job.id) {
+        job.status = 'cancelled';
+      } else if (queuePaused) {
+        job.status = 'paused';
+      } else {
+        job.status = 'failed';
+        job.error = typeof err === 'string' ? err : (err && err.message) || 'Unknown error';
+      }
+      currentDownloadJobId = null;
+      currentProcessRef.current = null;
+      cancelledJobId = null;
+      sendQueueUpdate();
+      processNextInQueue();
+    });
+}
+
 // Helper: auto update yt-dlp binary (non-blocking). Returns promise with {updated:boolean, version?:string}
 function autoUpdateYtDlp({ force = false } = {}) {
   return new Promise((resolve) => {
@@ -278,6 +356,20 @@ app.whenReady().then(() => {
       store.set('ytdlpPath', `yt-dlp${process.platform === 'win32' ? '.exe' : ''}`);
     }
   }
+
+  const autoUpdYtDlp = store.get('autoUpdateYtDlpOnStart', true);
+  if (autoUpdYtDlp) {
+    setTimeout(() => {
+      console.log('Auto updating yt-dlp on app startup...');
+      autoUpdateYtDlp()
+        .then(res => {
+          console.log('Auto update yt-dlp on startup result:', res);
+        })
+        .catch(err => {
+          console.warn('Auto update yt-dlp on startup failed:', err.message);
+        });
+    }, 5000);
+  }
 });
 
 // App window close event
@@ -374,9 +466,17 @@ ipcMain.handle('get-video-info', async (event, url) => {
 });
 
 ipcMain.handle('download-video', async (event, { url, format, isAudio, outputPath }) => {
+  currentSingleCancelled = false;
   return await downloadVideo(url, format, isAudio, outputPath, (progress) => {
     mainWindow.webContents.send('download-progress', progress);
-  });
+  }, { processRef: currentSingleProcessRef, isSingle: true });
+});
+
+ipcMain.handle('cancel-current-download', () => {
+  currentSingleCancelled = true;
+  if (currentSingleProcessRef.current) {
+    try { currentSingleProcessRef.current.kill(); } catch (e) { /* ignore */ }
+  }
 });
 
 ipcMain.handle('get-save-folder', () => {
@@ -562,6 +662,75 @@ ipcMain.handle('download-playlist-item', async (event, { url, index, format, isA
   return await downloadVideo(url, format, isAudio, outputPath, (progress) => {
     mainWindow.webContents.send('download-progress', progress);
   });
+});
+
+// Queue handlers
+ipcMain.handle('queue-get', () => {
+  return JSON.parse(JSON.stringify(downloadQueue));
+});
+
+ipcMain.handle('queue-add', (event, item) => {
+  const id = generateId();
+  const job = {
+    id,
+    url: item.url,
+    title: item.title || 'Unknown',
+    format: item.format,
+    isAudio: item.isAudio,
+    outputPath: item.outputPath,
+    thumbnail: item.thumbnail || null,
+    qualityLabel: item.qualityLabel || (item.isAudio ? 'Audio' : 'Video'),
+    status: 'pending',
+    progress: null,
+    error: null
+  };
+  downloadQueue.push(job);
+  sendQueueUpdate();
+  if (!currentDownloadJobId) processNextInQueue();
+  return id;
+});
+
+ipcMain.handle('queue-pause', () => {
+  queuePaused = true;
+  if (currentProcessRef.current) {
+    try { currentProcessRef.current.kill(); } catch (e) { /* ignore */ }
+  }
+  sendQueueUpdate();
+});
+
+ipcMain.handle('queue-resume', () => {
+  queuePaused = false;
+  downloadQueue.forEach(j => { if (j.status === 'paused') j.status = 'pending'; });
+  sendQueueUpdate();
+  if (!currentDownloadJobId) processNextInQueue();
+});
+
+ipcMain.handle('queue-cancel-item', (event, id) => {
+  const job = downloadQueue.find(j => j.id === id);
+  if (!job) return;
+  if (job.status === 'downloading' && id === currentDownloadJobId) {
+    cancelledJobId = id;
+    if (currentProcessRef.current) {
+      try { currentProcessRef.current.kill(); } catch (e) { /* ignore */ }
+    }
+  } else if (job.status === 'pending') {
+    job.status = 'cancelled';
+    sendQueueUpdate();
+  }
+});
+
+ipcMain.handle('queue-remove-item', (event, id) => {
+  const idx = downloadQueue.findIndex(j => j.id === id);
+  if (idx === -1) return;
+  const job = downloadQueue[idx];
+  if (job.status === 'downloading' && id === currentDownloadJobId) {
+    cancelledJobId = id;
+    if (currentProcessRef.current) {
+      try { currentProcessRef.current.kill(); } catch (e) { /* ignore */ }
+    }
+  }
+  downloadQueue.splice(idx, 1);
+  sendQueueUpdate();
 });
 
 // App quit handler
@@ -898,7 +1067,8 @@ async function getPlaylistInfo(url) {
 }
 
 // Helper function to download video using yt-dlp
-async function downloadVideo(url, format, isAudio, outputPath, progressCallback) {
+// options: { processRef?: { current }, jobId?: string } for queue (kill + no download-complete event)
+async function downloadVideo(url, format, isAudio, outputPath, progressCallback, options = {}) {
   emitInitialProgress(progressCallback);
   const ultraRemux = store.get('ultraRemuxMp4', false);
   const preferModern = store.get('preferModernCodecs', true);
@@ -1022,8 +1192,7 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
     
     console.log('Running yt-dlp with args:', args.join(' '));
     const ytdlp = spawn(ytdlpPath, args);
-    
-    // Track the process so we can kill it if needed
+    if (options.processRef) options.processRef.current = ytdlp;
     activeProcesses.push(ytdlp);
 
     let stderr = '';
@@ -1101,18 +1270,19 @@ async function downloadVideo(url, format, isAudio, outputPath, progressCallback)
         activeProcesses.splice(index, 1);
       }
       
-      // Kiểm tra nếu quá trình đã hoàn tất (nhận diện từ output) hoặc code=0
       if (isCompleted || code === 0) {
         console.log('Download completed successfully. Resolving promise...');
-        // Emit renderer event for completion
-        if (mainWindow) {
+        if (mainWindow && !options.jobId) {
           mainWindow.webContents.send('download-complete', { filePath: outputPath, url });
         }
         resolve({ success: true, filePath: outputPath });
       } else {
-        // Parse error message to provide more useful information
+        if (options.isSingle && currentSingleCancelled) {
+          currentSingleCancelled = false;
+          reject('CancelledByUser');
+          return;
+        }
         let errorMessage = "Download failed";
-        
         if (stderr.includes("HTTP Error 403: Forbidden")) {
           errorMessage = "Access forbidden - this video may be private or region-restricted";
         } else if (stderr.includes("Unable to extract")) {

@@ -98,7 +98,9 @@ function initClipboardDetection() {
           }
         }
       } catch (err) {
-        console.error('Failed to read clipboard:', err);
+        if (err.name !== 'NotAllowedError') {
+          console.error('Failed to read clipboard:', err);
+        }
       }
     }, 1500);
   } else {

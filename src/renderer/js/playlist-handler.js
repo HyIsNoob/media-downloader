@@ -4,14 +4,11 @@
 // import gsap from 'gsap';
 // import { showDownloadProgress, hideDownloadProgress } from './download-manager.js';
 
-// Store current playlist
 let currentPlaylist = null;
 
-// Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   setupPlaylistPage();
   
-  // Make currentPlaylist accessible globally
   window.currentPlaylist = currentPlaylist;
 });
 
@@ -22,7 +19,6 @@ function setupPlaylistPage() {
   
   if (!fetchPlaylistBtn || !playlistUrlInput) return;
   
-  // Get playlist info on button click
   fetchPlaylistBtn.addEventListener('click', async () => {
     const url = playlistUrlInput.value.trim();
     
@@ -31,39 +27,33 @@ function setupPlaylistPage() {
       return;
     }
     
+    const originalText = fetchPlaylistBtn.innerHTML;
     try {
-      // Show loading state
       fetchPlaylistBtn.disabled = true;
-      const originalText = fetchPlaylistBtn.innerHTML;
       fetchPlaylistBtn.innerHTML = '<i class="bi bi-arrow-repeat animate-spin me-2"></i> Loading...';
       
-      // Fetch playlist info
       const playlist = await window.electron.getPlaylistInfo(url);
       
       if (!playlist || !playlist.entries || playlist.entries.length === 0) {
         throw new Error('No videos found in playlist');
       }
       
-      // Store current playlist
       currentPlaylist = playlist;
+      window.currentPlaylist = currentPlaylist;
       
-      // Display playlist info
       displayPlaylistInfo(playlist);
       
-      // Setup select all button
       setupSelectionButtons();
       
     } catch (error) {
       console.error('Error fetching playlist:', error);
       NotificationManager.error(`Failed to fetch playlist: ${error.message || 'Unknown error'}`);
     } finally {
-      // Reset button state
       fetchPlaylistBtn.disabled = false;
       fetchPlaylistBtn.innerHTML = originalText;
     }
   });
   
-  // Enable pressing Enter in URL input
   playlistUrlInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       fetchPlaylistBtn.click();
@@ -76,22 +66,29 @@ function displayPlaylistInfo(playlist) {
   const playlistInfo = document.getElementById('playlistInfo');
   const playlistItems = document.getElementById('playlistItems');
   const videoCount = document.getElementById('videoCount');
+  const playlistTitleEl = document.getElementById('playlistTitle');
+  const playlistDurationEl = document.getElementById('playlistTotalDuration');
   
-  // Show playlist info section
   playlistInfo.classList.remove('d-none');
   
-  // Clear previous items
   playlistItems.innerHTML = '';
   
-  // Update video count
   videoCount.textContent = playlist.entries.length;
+  if (playlistTitleEl) {
+    playlistTitleEl.textContent = playlist.title || 'Playlist';
+  }
+  if (playlistDurationEl) {
+    const totalSeconds = playlist.entries.reduce((sum, entry) => {
+      if (!entry || !entry.duration) return sum;
+      return sum + entry.duration;
+    }, 0);
+    playlistDurationEl.textContent = totalSeconds ? formatDuration(totalSeconds) : 'Unknown';
+  }
   
-  // Create playlist item cards with staggered animation
   playlist.entries.forEach((item, index) => {
     const playlistItem = createPlaylistItemCard(item, index);
     playlistItems.appendChild(playlistItem);
     
-    // Animate entry
     gsap.fromTo(playlistItem, 
       { opacity: 0, y: 20 },
       { 
@@ -107,58 +104,96 @@ function displayPlaylistInfo(playlist) {
 
 // Create playlist item card
 function createPlaylistItemCard(item, index) {
-  // Create container
   const playlistItem = document.createElement('div');
-  playlistItem.className = 'glass-card p-4 hover:shadow-lg transition-shadow duration-300';
+  playlistItem.className = 'w-full border-b border-secondary-200 dark:border-secondary-700 pb-3';
   
-  // Format duration
   const duration = formatDuration(item.duration);
+  const hasThumbnail = !!item.thumbnail;
   
-  // Set card content
   playlistItem.innerHTML = `
-    <div class="flex flex-col h-full">
-      <div class="flex items-center mb-3">
-        <input type="checkbox" class="playlist-item-checkbox w-5 h-5 rounded border-secondary-300 dark:border-secondary-600 text-primary-600 focus:ring-primary-500" data-index="${index}">
-        <span class="ml-2 text-secondary-500 dark:text-secondary-400 text-sm">#${index + 1}</span>
-      </div>
-      <div class="relative rounded-lg overflow-hidden mb-3">
-        <img src="${item.thumbnail || './assets/placeholder.png'}" class="w-full h-32 object-cover" alt="Thumbnail">
-        <div class="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
-          ${duration}
+    <div class="flex items-start gap-3">
+      ${hasThumbnail ? `
+        <div class="w-16 h-10 rounded overflow-hidden flex-shrink-0">
+          <img src="${item.thumbnail}" class="w-full h-full object-cover" alt="">
         </div>
-      </div>
-      <h3 class="text-base font-medium mb-2 line-clamp-2" title="${item.title}">${item.title}</h3>
-      <div class="mt-auto">
-        <div class="flex justify-between gap-2">
-          <button class="download-playlist-item px-3 py-1.5 flex-1 bg-primary-600 hover:bg-primary-700 text-white rounded text-sm flex items-center justify-center transition-colors btn-animate" data-index="${index}" data-quality="best">
+      ` : ''}
+      <div class="flex-1">
+        <div class="flex items-center justify-between mb-1">
+          <div class="flex items-center gap-2 text-xs text-secondary-500 dark:text-secondary-400">
+            <input type="checkbox" class="playlist-item-checkbox w-4 h-4 rounded border-secondary-300 dark:border-secondary-600 text-primary-600 focus:ring-primary-500" data-index="${index}">
+            <span>#${index + 1}</span>
+          </div>
+          <span class="text-xs text-secondary-500 dark:text-secondary-400">${duration}</span>
+        </div>
+        <h3 class="text-sm font-medium mb-1 line-clamp-2" title="${item.title}">${item.title}</h3>
+        <div class="flex gap-2 mt-1 flex-wrap">
+          <button class="download-playlist-item px-3 py-1 flex-1 bg-primary-600 hover:bg-primary-700 text-white rounded text-xs flex items-center justify-center transition-colors btn-animate" data-index="${index}" data-quality="best">
             <i class="bi bi-download me-1"></i> MP4
           </button>
-          <button class="download-playlist-item px-3 py-1.5 flex-1 bg-secondary-200 hover:bg-secondary-300 dark:bg-secondary-700 dark:hover:bg-secondary-600 rounded text-sm flex items-center justify-center transition-colors btn-animate" data-index="${index}" data-quality="audio">
+          <button class="download-playlist-item px-3 py-1 flex-1 bg-secondary-200 hover:bg-secondary-300 dark:bg-secondary-700 dark:hover:bg-secondary-600 rounded text-xs flex items-center justify-center transition-colors btn-animate" data-index="${index}" data-quality="audio">
             <i class="bi bi-music-note-beamed me-1"></i> MP3
+          </button>
+          <button class="add-playlist-item-to-queue px-3 py-1 border border-secondary-300 dark:border-secondary-600 rounded text-xs flex items-center justify-center hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors btn-animate" data-index="${index}" title="Add to queue">
+            <i class="bi bi-list-plus"></i>
           </button>
         </div>
       </div>
     </div>
   `;
   
-  // Add event listeners for download buttons
   playlistItem.querySelectorAll('.download-playlist-item').forEach(btn => {
     btn.addEventListener('click', async () => {
       await downloadSinglePlaylistItem(index, btn.getAttribute('data-quality'));
     });
   });
+  const queueBtn = playlistItem.querySelector('.add-playlist-item-to-queue');
+  if (queueBtn) {
+    queueBtn.addEventListener('click', () => addPlaylistItemToQueue(index));
+  }
   
   return playlistItem;
+}
+
+async function addPlaylistItemToQueue(index) {
+  if (!currentPlaylist || !currentPlaylist.entries[index]) return;
+  const item = currentPlaylist.entries[index];
+  const format = await showFormatSelectionDialog();
+  if (!format) return;
+  const saveFolder = await window.electron.getSaveFolder();
+  const playlistTitle = currentPlaylist.title || 'Playlist';
+  const safePlaylistTitle = playlistTitle.replace(/[\\/:*?"<>|]/g, '_');
+  const baseFolder = `${saveFolder}/${safePlaylistTitle}`;
+  const indexPadded = String(index + 1).padStart(2, '0');
+  let filename = `${indexPadded} - ${item.title.replace(/[\\/:*?"<>|]/g, '_')}`;
+  const ext = format.isAudio ? 'mp3' : 'mp4';
+  let outputPath = `${baseFolder}/${filename}.${ext}`;
+  const fileExists = await window.electron.checkFileExists(outputPath);
+  if (fileExists) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    outputPath = `${baseFolder}/${filename}_${timestamp}.${ext}`;
+  }
+  if (typeof window.addToQueue === 'function') {
+    await window.addToQueue({
+      url: item.url,
+      title: item.title,
+      format: format.formatId,
+      isAudio: format.isAudio,
+      outputPath,
+      thumbnail: item.thumbnail || null,
+      qualityLabel: format.isAudio ? 'Audio' : 'Video'
+    });
+  }
 }
 
 // Setup select all and download selected buttons
 function setupSelectionButtons() {
   const selectAllBtn = document.getElementById('selectAllBtn');
+  const downloadAllBtn = document.getElementById('downloadAllBtn');
+  const addSelectedToQueueBtn = document.getElementById('addSelectedToQueueBtn');
   const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
   
   if (!selectAllBtn || !downloadSelectedBtn) return;
   
-  // Select/deselect all
   selectAllBtn.addEventListener('click', () => {
     const checkboxes = document.querySelectorAll('.playlist-item-checkbox');
     const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
@@ -168,7 +203,6 @@ function setupSelectionButtons() {
     });
   });
   
-  // Download selected
   downloadSelectedBtn.addEventListener('click', async () => {
     const selectedCheckboxes = document.querySelectorAll('.playlist-item-checkbox:checked');
     
@@ -177,18 +211,70 @@ function setupSelectionButtons() {
       return;
     }
     
-    // Get selected item indices
     const selectedIndices = Array.from(selectedCheckboxes).map(checkbox => {
       return parseInt(checkbox.getAttribute('data-index'));
     });
     
-    // Show format selection dialog
     const format = await showFormatSelectionDialog();
     
     if (!format) return; // User cancelled
     
     await downloadMultiplePlaylistItems(selectedIndices, format);
   });
+
+  if (addSelectedToQueueBtn) {
+    addSelectedToQueueBtn.addEventListener('click', async () => {
+      const selectedCheckboxes = document.querySelectorAll('.playlist-item-checkbox:checked');
+      if (selectedCheckboxes.length === 0) {
+        NotificationManager.error('Please select at least one video');
+        return;
+      }
+      const selectedIndices = Array.from(selectedCheckboxes).map(cb => parseInt(cb.getAttribute('data-index')));
+      const format = await showFormatSelectionDialog();
+      if (!format) return;
+      const saveFolder = await window.electron.getSaveFolder();
+      const playlistTitle = currentPlaylist.title || 'Playlist';
+      const safePlaylistTitle = playlistTitle.replace(/[\\/:*?"<>|]/g, '_');
+      const baseFolder = `${saveFolder}/${safePlaylistTitle}`;
+      for (const index of selectedIndices) {
+        const item = currentPlaylist.entries[index];
+        if (!item) continue;
+        const indexPadded = String(index + 1).padStart(2, '0');
+        let filename = `${indexPadded} - ${item.title.replace(/[\\/:*?"<>|]/g, '_')}`;
+        const ext = format.isAudio ? 'mp3' : 'mp4';
+        let outputPath = `${baseFolder}/${filename}.${ext}`;
+        if (await window.electron.checkFileExists(outputPath)) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          outputPath = `${baseFolder}/${filename}_${timestamp}.${ext}`;
+        }
+        if (typeof window.addToQueue === 'function') {
+          await window.addToQueue({
+            url: item.url,
+            title: item.title,
+            format: format.formatId,
+            isAudio: format.isAudio,
+            outputPath,
+            thumbnail: item.thumbnail || null,
+            qualityLabel: format.isAudio ? 'Audio' : 'Video'
+          });
+        }
+      }
+      NotificationManager.success(`Added ${selectedIndices.length} item(s) to queue`);
+    });
+  }
+  
+  if (downloadAllBtn) {
+    downloadAllBtn.addEventListener('click', async () => {
+      if (!currentPlaylist || !currentPlaylist.entries || currentPlaylist.entries.length === 0) {
+        NotificationManager.error('No playlist available');
+        return;
+      }
+      const allIndices = currentPlaylist.entries.map((_, index) => index);
+      const format = await showFormatSelectionDialog();
+      if (!format) return;
+      await downloadMultiplePlaylistItems(allIndices, format);
+    });
+  }
 }
 
 // Download a single playlist item
@@ -201,39 +287,36 @@ async function downloadSinglePlaylistItem(index, qualityOption) {
   const item = currentPlaylist.entries[index];
   
   try {
-    // Convert quality option to format and isAudio
     let format, isAudio;
     
     if (qualityOption === 'audio') {
-      format = 'bestaudio';
+      format = 'audio-320';
       isAudio = true;
     } else {
-      format = 'bestvideo+bestaudio';
+      format = 'best-mp4';
       isAudio = false;
     }
     
-    // Show download progress
     showDownloadProgress();
     
-    // Get save folder
     const saveFolder = await window.electron.getSaveFolder();
     
-    // Create filename
-    let filename = item.title.replace(/[\\/:*?"<>|]/g, '_');
+    const playlistTitle = currentPlaylist.title || 'Playlist';
+    const safePlaylistTitle = playlistTitle.replace(/[\\/:*?"<>|]/g, '_');
+    const indexPadded = String(index + 1).padStart(2, '0');
+    const baseFolder = `${saveFolder}/${safePlaylistTitle}`;
+    let filename = `${indexPadded} - ${item.title.replace(/[\\/:*?"<>|]/g, '_')}`;
     const ext = isAudio ? 'mp3' : 'mp4';
-    let outputPath = `${saveFolder}/${filename}.${ext}`;
+    let outputPath = `${baseFolder}/${filename}.${ext}`;
     
-    // Check if file exists
     const fileExists = await window.electron.checkFileExists(outputPath);
     
     if (fileExists) {
-      // Add timestamp to filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      outputPath = `${saveFolder}/${filename}_${timestamp}.${ext}`;
+      outputPath = `${baseFolder}/${filename}_${timestamp}.${ext}`;
       NotificationManager.info('File already exists. Adding timestamp to filename.');
     }
     
-    // Start download
     await window.electron.downloadVideo({
       url: item.url,
       format: format,
@@ -241,7 +324,6 @@ async function downloadSinglePlaylistItem(index, qualityOption) {
       outputPath: outputPath
     });
     
-    // Add to history
     await window.electron.addToHistory({
       title: item.title,
       url: item.url,
@@ -252,7 +334,6 @@ async function downloadSinglePlaylistItem(index, qualityOption) {
       downloadedAt: new Date().toISOString()
     });
     
-    // Show success notification
     NotificationManager.success(`Downloaded: ${item.title}`);
     
   } catch (error) {
@@ -274,15 +355,15 @@ async function downloadMultiplePlaylistItems(indices, format) {
   }
   
   try {
-    // Show download progress with multiple items message
     showDownloadProgress();
     document.querySelector('#downloadProgress h5').textContent = 
       `Downloading ${indices.length} videos from playlist...`;
     
-    // Get save folder
     const saveFolder = await window.electron.getSaveFolder();
+    const playlistTitle = currentPlaylist.title || 'Playlist';
+    const safePlaylistTitle = playlistTitle.replace(/[\\/:*?"<>|]/g, '_');
+    const baseFolder = `${saveFolder}/${safePlaylistTitle}`;
     
-    // Download each item
     let completed = 0;
     let failed = 0;
     
@@ -291,25 +372,21 @@ async function downloadMultiplePlaylistItems(indices, format) {
       const item = currentPlaylist.entries[index];
       
       try {
-        // Update progress message
         document.querySelector('#downloadProgress h5').textContent = 
           `Downloading (${i+1}/${indices.length}): ${item.title}`;
         
-        // Create filename
-        let filename = item.title.replace(/[\\/:*?"<>|]/g, '_');
+        const indexPadded = String(index + 1).padStart(2, '0');
+        let filename = `${indexPadded} - ${item.title.replace(/[\\/:*?"<>|]/g, '_')}`;
         const ext = format.isAudio ? 'mp3' : 'mp4';
-        let outputPath = `${saveFolder}/${filename}.${ext}`;
+        let outputPath = `${baseFolder}/${filename}.${ext}`;
         
-        // Check if file exists
         const fileExists = await window.electron.checkFileExists(outputPath);
         
         if (fileExists) {
-          // Add timestamp to filename
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          outputPath = `${saveFolder}/${filename}_${timestamp}.${ext}`;
+          outputPath = `${baseFolder}/${filename}_${timestamp}.${ext}`;
         }
         
-        // Download
         await window.electron.downloadVideo({
           url: item.url,
           format: format.formatId,
@@ -352,11 +429,9 @@ async function downloadMultiplePlaylistItems(indices, format) {
 // Show format selection dialog for playlist downloads
 async function showFormatSelectionDialog() {
   return new Promise((resolve) => {
-    // Create modal overlay
     const overlayEl = document.createElement('div');
     overlayEl.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
     
-    // Create dialog content
     overlayEl.innerHTML = `
       <div class="glass-card w-11/12 max-w-md p-6 animate-fade-in">
         <h3 class="text-xl font-bold mb-4">Select Download Format</h3>
@@ -364,8 +439,8 @@ async function showFormatSelectionDialog() {
           <label class="flex items-center p-3 border border-secondary-200 dark:border-secondary-700 rounded-lg cursor-pointer hover:bg-secondary-100 dark:hover:bg-secondary-800">
             <input type="radio" name="formatOption" value="best" class="w-5 h-5 text-primary-600" checked>
             <div class="ml-3">
-              <div class="font-medium">Best Quality (MP4)</div>
-              <div class="text-xs text-secondary-500 dark:text-secondary-400">Highest resolution available with audio</div>
+              <div class="font-medium">Best (MP4)</div>
+              <div class="text-xs text-secondary-500 dark:text-secondary-400">Best quality with MP4 container</div>
             </div>
           </label>
           
@@ -381,7 +456,7 @@ async function showFormatSelectionDialog() {
             <input type="radio" name="formatOption" value="audio" class="w-5 h-5 text-primary-600">
             <div class="ml-3">
               <div class="font-medium">Audio Only (MP3)</div>
-              <div class="text-xs text-secondary-500 dark:text-secondary-400">Best audio quality, no video</div>
+              <div class="text-xs text-secondary-500 dark:text-secondary-400">Best audio quality (320 kbps)</div>
             </div>
           </label>
         </div>
@@ -397,12 +472,9 @@ async function showFormatSelectionDialog() {
       </div>
     `;
     
-    // Add to DOM
     document.body.appendChild(overlayEl);
     
-    // Add event listeners
     document.getElementById('cancelFormat').addEventListener('click', () => {
-      // Remove dialog with animation
       gsap.to(overlayEl.firstElementChild, {
         scale: 0.9,
         opacity: 0,
@@ -415,25 +487,23 @@ async function showFormatSelectionDialog() {
     });
     
     document.getElementById('confirmFormat').addEventListener('click', () => {
-      // Get selected format
       const formatOption = document.querySelector('input[name="formatOption"]:checked').value;
       let formatId, isAudio;
       
       switch (formatOption) {
         case 'audio':
-          formatId = 'bestaudio';
+          formatId = 'audio-320';
           isAudio = true;
           break;
         case '720p':
-          formatId = 'bestvideo[height<=720]+bestaudio';
+          formatId = 'res-720';
           isAudio = false;
           break;
         default:
-          formatId = 'bestvideo+bestaudio';
+          formatId = 'best-mp4';
           isAudio = false;
       }
       
-      // Remove dialog with animation
       gsap.to(overlayEl.firstElementChild, {
         scale: 0.9,
         opacity: 0,
@@ -445,7 +515,6 @@ async function showFormatSelectionDialog() {
       });
     });
     
-    // Animate dialog entry
     gsap.fromTo(overlayEl.firstElementChild,
       { opacity: 0, scale: 0.9 },
       { opacity: 1, scale: 1, duration: 0.3 }

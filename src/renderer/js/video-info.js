@@ -1,10 +1,12 @@
 // video-info.js - Handles video information fetching and display
 // Using global NotificationManager from app-bundle.js instead of importing
-// Import { NotificationManager } from './ui-utils.js';
 // Using global gsap loaded from script tag
 // import gsap from 'gsap';
 
-// Store current video information
+// Single global placeholder to avoid duplicate declaration (shared with history-manager.js)
+window.PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'%3E%3Crect fill='%23e5e7eb' width='320' height='180'/%3E%3C/svg%3E";
+const PLACEHOLDER_IMAGE = window.PLACEHOLDER_IMAGE;
+
 let currentVideoInfo = null;
 
 // Initialize when DOM is loaded
@@ -42,13 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       
+      let originalButtonText = fetchBtn.innerHTML;
       try {
-        // Show loading state
         fetchBtn.disabled = true;
-        const originalButtonText = fetchBtn.innerHTML;  // Store the original button text
         fetchBtn.innerHTML = '<i class="bi bi-arrow-repeat animate-spin me-2"></i> Loading...';
         
-        // Reset UI
         resetVideoInfo();
         
         console.log('Calling window.electron.getVideoInfo with URL:', url);
@@ -57,7 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
           throw new Error('Electron API is not available');
         }
         
-        // Fetch video info through IPC
         const info = await window.electron.getVideoInfo(url);
         console.log('Video info received:', info);
         
@@ -65,14 +64,10 @@ document.addEventListener('DOMContentLoaded', () => {
           throw new Error('No valid formats found for this video');
         }
         
-        // Store current video info
         currentVideoInfo = info;
-        window.currentVideoInfo = info; // Update the global reference
+        window.currentVideoInfo = info;
         
-        // Display video info with animation
         displayVideoInfo(info);
-        
-        // Show format selection
         displayFormatOptions(info.formats);
         
       } catch (error) {
@@ -83,9 +78,8 @@ document.addEventListener('DOMContentLoaded', () => {
           alert(`Failed to fetch video info: ${error.message || 'Unknown error'}`);
         }
       } finally {
-        // Reset button state
         fetchBtn.disabled = false;
-        fetchBtn.innerHTML = originalButtonText;  // Use the stored original button text
+        fetchBtn.innerHTML = originalButtonText;
       }
     };
     
@@ -247,8 +241,9 @@ function resetVideoInfo() {
   document.getElementById('videoFormatsList').innerHTML = '';
   document.getElementById('audioFormatsList').innerHTML = '';
   
-  // Disable download button
   document.getElementById('downloadBtn').disabled = true;
+  const addToQueueBtn = document.getElementById('addToQueueBtn');
+  if (addToQueueBtn) addToQueueBtn.disabled = true;
 }
 
 // Display video information
@@ -298,28 +293,38 @@ function displayVideoInfo(info) {
   const thumbnailUrl = getThumbnailUrl(info);
   
   if (thumbnailUrl) {
-    // Create a new image to preload
     const img = new Image();
     img.onload = () => {
       thumbnail.src = thumbnailUrl;
-      // Animate thumbnail
-      gsap.fromTo(thumbnail, 
-        { opacity: 0, scale: 0.9 }, 
+      gsap.fromTo(thumbnail,
+        { opacity: 0, scale: 0.9 },
         { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.2)" }
       );
     };
     img.onerror = () => {
-      // Use fallback image on error
-      thumbnail.src = './assets/placeholder.png';
-      gsap.fromTo(thumbnail, 
-        { opacity: 0, scale: 0.9 }, 
-        { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.2)" }
-      );
+      // YouTube: try hqdefault.jpg when maxresdefault fails (404)
+      const fallbackUrl = (info.id && (thumbnailUrl || '').includes('ytimg.com'))
+        ? `https://i.ytimg.com/vi/${info.id}/hqdefault.jpg`
+        : null;
+      if (fallbackUrl) {
+        const fallbackImg = new Image();
+        fallbackImg.onload = () => {
+          thumbnail.src = fallbackUrl;
+          gsap.fromTo(thumbnail, { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.2)" });
+        };
+        fallbackImg.onerror = () => {
+          thumbnail.src = PLACEHOLDER_IMAGE;
+          gsap.fromTo(thumbnail, { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.2)" });
+        };
+        fallbackImg.src = fallbackUrl;
+      } else {
+        thumbnail.src = PLACEHOLDER_IMAGE;
+        gsap.fromTo(thumbnail, { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.2)" });
+      }
     };
     img.src = thumbnailUrl;
   } else {
-    // Use fallback image
-    thumbnail.src = './assets/placeholder.png';
+    thumbnail.src = PLACEHOLDER_IMAGE;
   }
   
   // Show video info card with animation
@@ -613,8 +618,9 @@ function createFormatCard(format, qualityLabel, type, isDefault = false) {
     // Add selection to clicked item
     formatCard.classList.add('ring-2', 'ring-primary-500');
     
-    // Enable download button
     document.getElementById('downloadBtn').disabled = false;
+    const addToQueueBtn = document.getElementById('addToQueueBtn');
+    if (addToQueueBtn) addToQueueBtn.disabled = false;
   });
   
   return formatCard;

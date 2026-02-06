@@ -1,12 +1,12 @@
 // download-manager.js - Handles the download process
 // Using global NotificationManager and gsap from loaded scripts
-// import { NotificationManager } from './ui-utils.js';
-// import { currentVideoInfo, getSelectedFormat } from './video-info.js';
-// import gsap from 'gsap';
+
+// Options for current single download (used by Pause = add to queue)
+let currentDownloadOptions = null;
+let userPausedToQueue = false;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  // Initialize download button and folder selection
   const downloadBtn = document.getElementById('downloadBtn');
   const changeFolderBtn = document.getElementById('changeFolderBtn');
   
@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSaveFolderDisplay();
   }
   
-  // Make functions globally accessible after they're defined
+  setupDownloadProgressActions();
+  
   window.showDownloadProgress = showDownloadProgress;
   window.hideDownloadProgress = hideDownloadProgress;
 
@@ -78,7 +79,16 @@ function setupEventListeners() {
         NotificationManager.info('File already exists. Adding timestamp to filename.');
       }
       
-      // Start download
+      currentDownloadOptions = {
+        url,
+        title: currentVideoInfo.title,
+        format: selectedFormat.formatId,
+        isAudio: selectedFormat.isAudio,
+        outputPath,
+        thumbnail: currentVideoInfo.thumbnail || null,
+        qualityLabel
+      };
+      
       const result = await window.electron.downloadVideo({
         url,
         format: selectedFormat.formatId,
@@ -86,7 +96,7 @@ function setupEventListeners() {
         outputPath
       });
       
-      // Add to history
+      currentDownloadOptions = null;
       await window.electron.addToHistory({
         title: currentVideoInfo.title,
         url: url,
@@ -97,20 +107,72 @@ function setupEventListeners() {
         downloadedAt: new Date().toISOString()
       });
       
-      // Show success notification
       NotificationManager.success('Download completed successfully!');
       
     } catch (error) {
-      console.error('Download error:', error);
-      NotificationManager.error(`Download failed: ${error.message || 'Unknown error'}`);
+      const msg = error && (error.message || error.toString());
+      if (msg && msg.includes('CancelledByUser')) {
+        if (userPausedToQueue && currentDownloadOptions && typeof window.addToQueue === 'function') {
+          window.addToQueue(currentDownloadOptions).then(() => {
+            NotificationManager.success('Added to queue. Resume from Queue tab.');
+          });
+        } else {
+          NotificationManager.info('Download cancelled');
+        }
+      } else {
+        console.error('Download error:', error);
+        NotificationManager.error(`Download failed: ${msg || 'Unknown error'}`);
+      }
     } finally {
-      // Hide progress UI after a delay
-      setTimeout(() => {
-        hideDownloadProgress();
-      }, 1000);
+      userPausedToQueue = false;
+      currentDownloadOptions = null;
+      setTimeout(() => hideDownloadProgress(), 800);
     }
   });
   
+  // Add to queue button
+  const addToQueueBtn = document.getElementById('addToQueueBtn');
+  if (addToQueueBtn) {
+    addToQueueBtn.addEventListener('click', async () => {
+      const selectedFormat = getSelectedFormat();
+      if (!selectedFormat) {
+        NotificationManager.error('Please select a format');
+        return;
+      }
+      if (!currentVideoInfo) {
+        NotificationManager.error('No video information available');
+        return;
+      }
+      try {
+        const url = document.getElementById('urlInput').value.trim();
+        const saveFolder = await window.electron.getSaveFolder();
+        const qualityLabel = document.querySelector('.format-item.ring-2 .format-name').textContent.trim().replace(/\s+/g, '_');
+        let filename = currentVideoInfo.title.replace(/[\\/:*?"<>|]/g, '_');
+        const ext = selectedFormat.isAudio ? 'mp3' : 'mp4';
+        let outputPath = `${saveFolder}/${filename}_${qualityLabel}.${ext}`;
+        const fileExists = await window.electron.checkFileExists(outputPath);
+        if (fileExists) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          outputPath = `${saveFolder}/${filename}_${qualityLabel}_${timestamp}.${ext}`;
+        }
+        if (typeof window.addToQueue === 'function') {
+          await window.addToQueue({
+            url,
+            title: currentVideoInfo.title,
+            format: selectedFormat.formatId,
+            isAudio: selectedFormat.isAudio,
+            outputPath,
+            thumbnail: currentVideoInfo.thumbnail || null,
+            qualityLabel
+          });
+        }
+      } catch (err) {
+        console.error('Add to queue error:', err);
+        NotificationManager.error(err.message || 'Failed to add to queue');
+      }
+    });
+  }
+
   // Handle change folder button click
   changeFolderBtn.addEventListener('click', async () => {
     try {
@@ -124,25 +186,47 @@ function setupEventListeners() {
   });
 }
 
+function setupDownloadProgressActions() {
+  const cancelBtn = document.getElementById('downloadCancelBtn');
+  const pauseToQueueBtn = document.getElementById('downloadPauseToQueueBtn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      if (window.electron && window.electron.cancelCurrentDownload) {
+        window.electron.cancelCurrentDownload();
+      }
+    });
+  }
+  if (pauseToQueueBtn) {
+    pauseToQueueBtn.addEventListener('click', () => {
+      if (!currentDownloadOptions) return;
+      userPausedToQueue = true;
+      if (window.electron && window.electron.cancelCurrentDownload) {
+        window.electron.cancelCurrentDownload();
+      }
+    });
+  }
+}
+
 // Show download progress UI
 function showDownloadProgress() {
   const downloadProgress = document.getElementById('downloadProgress');
+  const progressBar = document.getElementById('progressBar');
+  if (progressBar) progressBar.style.width = '0%';
+  const speedEl = document.getElementById('downloadSpeed');
+  const downEl = document.getElementById('downloadedSize');
+  const totalEl = document.getElementById('totalSize');
+  const etaEl = document.getElementById('eta');
+  if (speedEl) speedEl.textContent = '0 KB/s';
+  if (downEl) downEl.textContent = '0 MB';
+  if (totalEl) totalEl.textContent = '0 MB';
+  if (etaEl) etaEl.textContent = '00:00';
   
-  // Reset progress
-  document.getElementById('progressBar').style.width = '0%';
-  document.getElementById('downloadSpeed').textContent = '0 KB/s';
-  document.getElementById('downloadedSize').textContent = '0 MB';
-  document.getElementById('totalSize').textContent = '0 MB';
-  document.getElementById('eta').textContent = '00:00';
-  
-  // Show progress card with animation
   downloadProgress.classList.remove('d-none');
   gsap.fromTo(downloadProgress,
     { opacity: 0, y: 20 },
     { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }
   );
   
-  // Set up download progress listener
   if (window.electron && window.electron.onDownloadProgress) {
     window.electron.onDownloadProgress(updateDownloadProgress);
   }
@@ -228,8 +312,7 @@ function showDownloadCompleteModal(filePath) {
 
   openFileBtn.onclick = () => window.electron.openFile(filePath);
   openFolderBtn.onclick = () => {
-    const folderPath = filePath.substring(0, filePath.lastIndexOf(/[/\\]/.test(filePath) ? filePath.match(/[/\\](?!.*[/\\])/).index : filePath.length));
-    window.electron.openFolder(folderPath || filePath);
+    window.electron.openFolder(filePath);
   };
   copyPathBtn.onclick = async () => {
     try {

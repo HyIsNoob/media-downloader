@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electron', {
   // Video info and download
   getVideoInfo: (url) => ipcRenderer.invoke('get-video-info', url),
   downloadVideo: (options) => ipcRenderer.invoke('download-video', options),
+  cancelCurrentDownload: () => ipcRenderer.invoke('cancel-current-download'),
   onDownloadProgress: (callback) => {
     const channel = 'download-progress';
     ipcRenderer.on(channel, (_, progress) => callback(progress));
@@ -23,7 +24,25 @@ contextBridge.exposeInMainWorld('electron', {
   
   // Playlist handling
   getPlaylistInfo: (url) => ipcRenderer.invoke('get-playlist-info', url),
-  
+
+  // Download queue
+  queueGet: () => ipcRenderer.invoke('queue-get'),
+  queueAdd: (item) => ipcRenderer.invoke('queue-add', item),
+  queuePause: () => ipcRenderer.invoke('queue-pause'),
+  queueResume: () => ipcRenderer.invoke('queue-resume'),
+  queueCancelItem: (id) => ipcRenderer.invoke('queue-cancel-item', id),
+  queueRemoveItem: (id) => ipcRenderer.invoke('queue-remove-item', id),
+  onQueueUpdate: (callback) => {
+    const channel = 'queue-update';
+    ipcRenderer.on(channel, (_, queue) => callback(queue));
+    return () => ipcRenderer.removeListener(channel, callback);
+  },
+  onQueueItemProgress: (callback) => {
+    const channel = 'queue-item-progress';
+    ipcRenderer.on(channel, (_, data) => callback(data));
+    return () => ipcRenderer.removeListener(channel, callback);
+  },
+
   // Settings
   getSaveFolder: () => ipcRenderer.invoke('get-save-folder'),
   setSaveFolder: () => ipcRenderer.invoke('set-save-folder'),

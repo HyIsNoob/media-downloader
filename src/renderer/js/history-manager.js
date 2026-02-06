@@ -1,7 +1,5 @@
 // history-manager.js - Handles download history
-// Using global variables
-// import { NotificationManager } from './ui-utils.js';
-// import gsap from 'gsap';
+// Uses window.PLACEHOLDER_IMAGE set by video-info.js to avoid duplicate declaration
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -123,7 +121,7 @@ function createHistoryCard(item, index, fileExists) {
   historyCard.innerHTML = `
     <div class="flex flex-col md:flex-row gap-4">
       <div class="w-full md:w-40 h-24 rounded-lg overflow-hidden relative">
-        <img src="${item.thumbnail || './assets/placeholder.png'}" class="w-full h-full object-cover" alt="Thumbnail">
+        <img src="${item.thumbnail || (window.PLACEHOLDER_IMAGE || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'%3E%3Crect fill='%23e5e7eb' width='320' height='180'/%3E%3C/svg%3E")}" class="w-full h-full object-cover" alt="Thumbnail">
         <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
         <div class="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
           ${item.isAudio ? '<i class="bi bi-music-note-beamed me-1"></i> Audio' : '<i class="bi bi-camera-video me-1"></i> Video'}

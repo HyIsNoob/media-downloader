@@ -44,6 +44,13 @@
               </a>
             </li>
             <li>
+              <a href="#" class="flex items-center justify-center md:justify-start px-2 md:px-4 py-3 text-white rounded-lg hover:bg-primary-700 transition-colors nav-link" data-page="queue">
+                <i class="bi bi-list-ul text-xl md:me-3"></i>
+                <span class="hidden md:block">Queue</span>
+                <span id="queue-badge" class="hidden ml-2 px-1.5 py-0.5 text-xs rounded-full bg-primary-500 text-white">0</span>
+              </a>
+            </li>
+            <li>
               <a href="#" class="flex items-center justify-center md:justify-start px-2 md:px-4 py-3 text-white rounded-lg hover:bg-primary-700 transition-colors nav-link" data-page="history">
                 <i class="bi bi-clock-history text-xl md:me-3"></i>
                 <span class="hidden md:block">History</span>
@@ -82,20 +89,20 @@
           </header>
           
           <!-- URL Input Card -->
-          <div class="glass-card p-6 mb-8 animate-fade-in">
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <i class="bi bi-link-45deg text-primary-500 text-xl"></i>
+          <div class="glass-card p-6 mb-8 rounded-xl animate-fade-in">
+            <div class="relative flex">
+              <div class="absolute left-0 top-0 bottom-0 flex items-center pl-3 pointer-events-none text-primary-500">
+                <i class="bi bi-link-45deg text-xl"></i>
               </div>
-              <input type="text" id="urlInput" class="w-full pl-10 pr-20 py-3 bg-white/50 dark:bg-black/30 border border-secondary-200 dark:border-secondary-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all" placeholder="Paste video URL from YouTube, Facebook, TikTok...">
-              <button id="fetchBtn" class="absolute right-2 top-1/2 transform -translate-y-1/2 btn-primary-gradient btn-animate flex items-center">
+              <input type="text" id="urlInput" class="flex-1 min-w-0 pl-10 pr-28 py-3.5 bg-white/50 dark:bg-black/30 border border-secondary-200 dark:border-secondary-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all placeholder:text-secondary-400" placeholder="Paste video URL from YouTube, Facebook, TikTok...">
+              <button type="button" id="fetchBtn" class="absolute right-2 top-1/2 -translate-y-1/2 btn-primary-gradient btn-animate inline-flex items-center justify-center px-4 py-2 rounded-lg flex-shrink-0">
                 <i class="bi bi-search me-2"></i> Get Info
               </button>
             </div>
           </div>
 
           <!-- Video Info Card -->
-          <div id="videoInfo" class="glass-card mb-8 overflow-hidden d-none animate-slide-up">
+          <div id="videoInfo" class="glass-card mb-8 overflow-hidden rounded-xl d-none animate-slide-up">
             <div class="flex flex-col md:flex-row">
               <div class="md:w-2/5 relative overflow-hidden">
                 <img id="thumbnail" class="w-full h-full object-cover transform hover:scale-105 transition-transform duration-500" src="" alt="Thumbnail">
@@ -128,7 +135,7 @@
           </div>            
           
           <!-- Format Selection Card -->
-          <div id="formatSelection" class="glass-card mb-8 d-none animate-slide-up">
+          <div id="formatSelection" class="glass-card mb-8 rounded-xl d-none animate-slide-up">
             <div class="border-b border-secondary-200 dark:border-secondary-700 p-4">
               <h5 class="font-semibold text-lg">Select Format</h5>
             </div>
@@ -154,17 +161,32 @@
                 </button>
                 <span id="saveFolder" class="ml-3 text-sm text-secondary-500 dark:text-secondary-400"></span>
               </div>
-              <button id="downloadBtn" class="btn-primary-gradient flex items-center btn-animate" disabled>
-                <i class="bi bi-download me-2"></i> Download
-              </button>
+              <div class="flex gap-2">
+                <button id="addToQueueBtn" class="px-4 py-2 border border-primary-600 text-primary-600 dark:text-primary-400 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors btn-animate flex items-center" disabled>
+                  <i class="bi bi-list-plus me-2"></i> Add to queue
+                </button>
+                <button id="downloadBtn" class="btn-primary-gradient flex items-center btn-animate" disabled>
+                  <i class="bi bi-download me-2"></i> Download
+                </button>
+              </div>
             </div>
           </div>
 
           <!-- Download Progress Card -->
-          <div id="downloadProgress" class="glass-card mb-8 p-6 d-none animate-slide-up">
-            <h5 class="font-semibold text-lg mb-4">Downloading...</h5>
-            <div class="mb-4 progress-animated">
-              <div id="progressBar" class="h-2 bg-primary-500 rounded-full transition-all duration-300"></div>
+          <div id="downloadProgress" class="glass-card mb-8 p-6 rounded-xl d-none animate-slide-up">
+            <div class="flex items-center justify-between mb-4">
+              <h5 class="font-semibold text-lg">Downloading...</h5>
+              <div class="flex gap-2">
+                <button type="button" id="downloadPauseToQueueBtn" class="px-3 py-1.5 text-sm border border-secondary-300 dark:border-secondary-600 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors btn-animate" title="Pause and add to queue">
+                  <i class="bi bi-pause-fill me-1"></i> Pause (add to queue)
+                </button>
+                <button type="button" id="downloadCancelBtn" class="px-3 py-1.5 text-sm border border-error/80 text-error rounded-lg hover:bg-error/10 transition-colors btn-animate">
+                  <i class="bi bi-x-lg me-1"></i> Cancel
+                </button>
+              </div>
+            </div>
+            <div class="mb-4 progress-animated h-2.5 rounded-full overflow-hidden bg-secondary-200 dark:bg-secondary-700">
+              <div id="progressBar" class="h-full bg-primary-500 rounded-full transition-all duration-300" style="width:0%"></div>
             </div>
             <div class="flex justify-between text-sm text-secondary-500 dark:text-secondary-400">
               <div>
@@ -205,10 +227,24 @@
           <div id="playlistInfo" class="d-none">
             <div class="glass-card mb-8">
               <div class="border-b border-secondary-200 dark:border-secondary-700 p-4 flex justify-between items-center">
-                <h5 class="font-semibold text-lg">Playlist Videos (<span id="videoCount">0</span>)</h5>
+                <div>
+                  <h5 class="font-semibold text-lg" id="playlistTitleHeading">
+                    <span id="playlistTitle">Playlist</span>
+                    <span class="text-sm text-secondary-500 dark:text-secondary-400">(<span id="videoCount">0</span> videos)</span>
+                  </h5>
+                  <p class="text-xs text-secondary-500 dark:text-secondary-400 mt-1">
+                    Total duration: <span id="playlistTotalDuration">Unknown</span>
+                  </p>
+                </div>
                 <div class="space-x-2">
                   <button id="selectAllBtn" class="px-3 py-1.5 border border-secondary-300 dark:border-secondary-600 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors text-sm btn-animate">
                     <i class="bi bi-check-all me-1"></i> Select All
+                  </button>
+                  <button id="downloadAllBtn" class="px-3 py-1.5 bg-secondary-200 hover:bg-secondary-300 dark:bg-secondary-700 dark:hover:bg-secondary-600 rounded-lg transition-colors text-sm btn-animate">
+                    <i class="bi bi-collection-play me-1"></i> Download All
+                  </button>
+                  <button id="addSelectedToQueueBtn" class="px-3 py-1.5 border border-secondary-300 dark:border-secondary-600 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors text-sm btn-animate">
+                    <i class="bi bi-list-plus me-1"></i> Add selected to queue
                   </button>
                   <button id="downloadSelectedBtn" class="btn-primary-gradient text-sm px-3 py-1.5 btn-animate">
                     <i class="bi bi-download me-1"></i> Download Selected
@@ -216,7 +252,38 @@
                 </div>
               </div>
               <div class="p-6">
-                <div id="playlistItems" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                <div id="playlistItems" class="space-y-2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Queue Page -->
+      <div class="page h-full overflow-y-auto" id="queue">
+        <div class="p-6 md:p-8">
+          <header class="mb-8">
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">Download Queue</h1>
+            <p class="text-secondary-500 dark:text-secondary-400 mt-2">Manage pending and active downloads</p>
+          </header>
+          <div class="glass-card mb-8">
+            <div class="border-b border-secondary-200 dark:border-secondary-700 p-4 flex flex-wrap gap-2 items-center justify-between">
+              <div class="flex gap-2">
+                <button id="queuePauseBtn" class="px-3 py-1.5 border border-secondary-300 dark:border-secondary-600 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors text-sm btn-animate">
+                  <i class="bi bi-pause-fill me-1"></i> Pause
+                </button>
+                <button id="queueResumeBtn" class="px-3 py-1.5 border border-secondary-300 dark:border-secondary-600 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors text-sm btn-animate">
+                  <i class="bi bi-play-fill me-1"></i> Resume
+                </button>
+              </div>
+              <span id="queueSummary" class="text-sm text-secondary-500 dark:text-secondary-400">0 pending · 0 downloading</span>
+            </div>
+            <div class="p-6">
+              <div id="queueItems" class="space-y-3"></div>
+              <div id="queueEmpty" class="py-16 text-center text-secondary-500 dark:text-secondary-400 rounded-xl">
+                <i class="bi bi-inbox text-6xl mb-4 opacity-40"></i>
+                <p class="text-xl font-medium text-secondary-700 dark:text-secondary-300">Queue is empty</p>
+                <p class="text-sm mt-2 max-w-sm mx-auto">Add videos from <strong>Home</strong> (Add to queue) or <strong>Playlist</strong> (Queue / Add selected to queue)</p>
               </div>
             </div>
           </div>
@@ -242,9 +309,10 @@
               <div id="historyItems" class="grid grid-cols-1 gap-4">
                 <!-- History items will be populated here -->
               </div>
-              <div id="emptyHistory" class="py-12 text-center text-secondary-500 dark:text-secondary-400">
-                <i class="bi bi-clock-history text-5xl mb-4 opacity-50"></i>
-                <p class="text-lg">No download history yet</p>
+              <div id="emptyHistory" class="py-16 text-center text-secondary-500 dark:text-secondary-400 rounded-xl">
+                <i class="bi bi-clock-history text-6xl mb-4 opacity-40"></i>
+                <p class="text-xl font-medium text-secondary-700 dark:text-secondary-300">No download history yet</p>
+                <p class="text-sm mt-2">Downloads will appear here</p>
               </div>
             </div>
           </div>
@@ -407,6 +475,7 @@
   <script src="./js/format-selector.js"></script>
   <script src="./js/download-manager.js"></script>
   <script src="./js/playlist-handler.js"></script>
+  <script src="./js/queue-manager.js"></script>
   <script src="./js/history-manager.js"></script>
   <script src="./js/settings-manager.js"></script>
 </body>
