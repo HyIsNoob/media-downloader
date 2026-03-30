@@ -1,8 +1,3 @@
-# Media Downloader
-
-A modern, cross-platform desktop application for downloading videos and audio from various platforms like YouTube, Facebook, and TikTok.
-
-
 <div align="center">
 
 # **Repository Archived** 
@@ -19,6 +14,11 @@ However, we've created a **newer, improved version** with better performance, fe
 
 </div>
 
+
+
+# Media Downloader
+
+A modern, cross-platform desktop application for downloading videos and audio from various platforms like YouTube, Facebook, and TikTok.
 
 ## What's New in v1.2.0 (Quality & Ultra Remux Update)
 
