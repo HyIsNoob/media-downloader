@@ -1,8 +1,8 @@
 <div align="center">
 
-# **!!Repository Archived!!** 
+# **!! Repository Archived !!** 
 
-## **!!!!Important Notice!!!!**
+## **!!!! Important Notice !!!!**
 
 **All releases and downloads from this repository remain fully functional and supported.** 
 
