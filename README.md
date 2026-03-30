@@ -2,7 +2,25 @@
 
 A modern, cross-platform desktop application for downloading videos and audio from various platforms like YouTube, Facebook, and TikTok.
 
-## 🚀 What's New in v1.2.0 (Quality & Ultra Remux Update)
+
+<div align="center">
+
+# **Repository Archived** 
+
+## **Important Notice**
+
+**All releases and downloads from this repository remain fully functional and supported.** 
+
+However, we've created a **newer, improved version** with better performance, features, and maintenance:
+
+[![New Repository](https://img.shields.io/badge/New%20Repo%20→-brightgreen.svg?logo=github)](https://github.com/HyIsNoob/OmniDL)
+
+**This repository is now read-only (archived) for historical reference.**
+
+</div>
+
+
+## What's New in v1.2.0 (Quality & Ultra Remux Update)
 
 | Feature | Description |
 |---------|-------------|
@@ -15,13 +33,13 @@ A modern, cross-platform desktop application for downloading videos and audio fr
 | Completion Modal | Giao diện hoàn tất tải với nút Open File / Folder / Copy Path. |
 | Tooltips Giải Thích | Icon “?” trong Settings giải thích khi nào bật Ultra vs Prefer Modern. |
 
-### 🔧 Chọn chế độ nào?
+### Chọn chế độ nào?
 
 - Muốn chất lượng tối đa / codec mới / file nhỏ hơn mà vẫn nét: Bật Prefer Modern (mặc định), tắt Ultra Remux.
 - Muốn đảm bảo mở được ở TV / đầu phát / phần mềm cũ chỉ hỗ trợ MP4: Bật Ultra Remux.
 - Không chắc: Giữ mặc định (Prefer Modern ON, Ultra OFF) → cân bằng tốt nhất.
 
-### 🎥 Quality Modes Logic
+### Quality Modes Logic
 
 | Mode | Hành vi | Container ưu tiên | Khi nào dùng |
 |------|---------|-------------------|--------------|
@@ -30,13 +48,13 @@ A modern, cross-platform desktop application for downloading videos and audio fr
 | Best (MP4) | Chỉ xét track MP4 trước rồi fallback | MP4 | Thiết bị cần MP4 + không bật Ultra |
 | Resolution (res-XXX) | Giới hạn độ cao; nếu Prefer Modern ON vẫn ưu tiên AV1/VP9 | MKV hoặc MP4 (nếu Ultra) | Khi bạn chỉ muốn 720p/1080p... |
 
-### 🧠 Quy tắc nội bộ
+### Quy tắc nội bộ
 
 - Prefer Modern bật → thêm selector ưu tiên `av01 / vp9 / h264` và merge MKV khi cần.
 - Ultra Remux bật → luôn thêm `--merge-output-format mp4`.
 - Xung đột: Ultra > Prefer Modern (Prefer Modern bị disable tạm thời UI).
 
-### ⚠️ Lưu ý
+### Lưu ý
 
 - AV1 có thể chậm hơn trên máy cũ (CPU decode). Nếu lag khi phát → tắt Prefer Modern hoặc dùng Best (MP4).
 - MKV an toàn chứa nhiều codec – hầu hết trình phát hiện đại hỗ trợ.
@@ -46,7 +64,7 @@ A modern, cross-platform desktop application for downloading videos and audio fr
 
 ![image](https://github.com/user-attachments/assets/7bc3dd8a-648b-4471-b1b6-ab70121e6c0f)
 
-## 🆕 What's New in v1.1.0
+## What's New in v1.1.0
 
 - Fixed notification display issues
 - Improved video information display with better fallbacks
@@ -58,7 +76,7 @@ A modern, cross-platform desktop application for downloading videos and audio fr
 
 See the [CHANGELOG.md](CHANGELOG.md) for complete details.
 
-## ✨ Features
+## Features
 
 - Download videos/audio from YouTube, Facebook, TikTok, and other supported platforms
 - Modern UI with dark/light mode
@@ -70,13 +88,13 @@ See the [CHANGELOG.md](CHANGELOG.md) for complete details.
 - Beautiful animations and transitions
 - Responsive design for all screen sizes
 
-## 🔧 Requirements
+## Requirements
 
 - [Node.js](https://nodejs.org/) (v14 or higher)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (must be installed and available in PATH)
 - [ffmpeg](https://ffmpeg.org/) (optional, for audio conversion)
 
-## 📥 Installation
+## Installation
 
 1. Clone this repository
 1. Install dependencies:
@@ -98,7 +116,7 @@ node setup-new-ui.js
 npm start
 ```
 
-## 💻 Development
+## Development
 
 To run the app in development mode with hot reload:
 
@@ -106,7 +124,7 @@ To run the app in development mode with hot reload:
 npm run dev
 ```
 
-## 🏗️ Build
+## Build
 
 To build the app for your platform:
 
@@ -122,7 +140,7 @@ npm run build:mac   # macOS
 npm run build:linux # Linux
 ```
 
-## 🛠️ Technologies Used
+## Technologies Used
 
 - Electron
 - JavaScript
@@ -132,17 +150,17 @@ npm run build:linux # Linux
 - GSAP (GreenSock Animation Platform)
 - yt-dlp (backend)
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 📸 Screenshots
+## Screenshots
 
 ![image](https://github.com/user-attachments/assets/b9f4ae7a-d433-4176-8396-ab76d47762b5)
 ![image](https://github.com/user-attachments/assets/9a2101ff-ecd8-4009-a391-4c6f6653940e)
 ![image](https://github.com/user-attachments/assets/ea6995a2-ac68-4d80-8892-338a72c43121)
 
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
